@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ type Messages struct {
 	persona string `json:"persona"`
 }
 
-var db *sql.DB
+// var db *sql.DB
 
 type Payload struct {
 	// Define the fields of your payload here
@@ -58,6 +59,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("Sending Request to Ollama")
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
@@ -73,11 +75,16 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uniqueID := uuid.New().String()
-	_, err = db.Exec("INSERT INTO queue (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, body)
-	if err != nil {
-		log.Printf("Failed to insert data into SQLite database: %v", err)
-	}
 
+	fmt.Println("uniqueId: " + uniqueID)
+	fmt.Println("prompt:", string(body))
+	db, _ := getDb()
+	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body))
+	if err != nil {
+		log.Printf("Failed to insert data into MariaDB database: %v", err)
+	}
+	db.Close()
+	fmt.Println("Sending Response to Ollama")
 	go func() {
 		asyncRequest(uniqueID, body)
 	}()
@@ -90,12 +97,13 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func responseHandler(w http.ResponseWriter, r *http.Request) {
+
 	uid := r.URL.Query().Get("uid") // Assuming /companion/response?uid=<uid> as Go's http package doesn't handle URL parameters directly
 
 	// Fetch the answer from the queue table
 	var sqlAnswer string
-	err := db.QueryRow("SELECT answer FROM queue WHERE uuid = ?", uid).Scan(&sqlAnswer)
-
+	db, _ := getDb()
+	err := db.QueryRow("SELECT answer FROM async WHERE uuid = ?", uid).Scan(&sqlAnswer)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			notFoundMsg := LLMAnswer{Model: "not found"}
@@ -131,7 +139,8 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete the entry from the queue
-	_, err = db.Exec("DELETE FROM queue WHERE uuid = ?", uid)
+	_, err = db.Exec("DELETE FROM async WHERE uuid = ?", uid)
+	db.Close()
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -144,9 +153,119 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonRes)
 }
 
+func unloadHandler(w http.ResponseWriter, r *http.Request) {
+
+	requestBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 1,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
+	if err != nil {
+		log.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to make Cleanup request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	w.WriteHeader(http.StatusOK)
+}
+
+func tagsHandler(w http.ResponseWriter, r *http.Request) {
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/tags", nil)
+	if err != nil {
+		log.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to make PS request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read response from external service: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseBody)
+}
+
+func psHandler(w http.ResponseWriter, r *http.Request) {
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/ps", nil)
+	if err != nil {
+		log.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to make PS request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read response from external service: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseBody)
+}
+
 // Perform asynchronous request and store result in the database
 func asyncRequest(uuid string, requestBody []byte) {
-	resp, err := http.Post("http://ollama.local:11111/api/chat", "application/json", bytes.NewBuffer(requestBody))
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
+	if err != nil {
+		log.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to make request to external service: %v", err)
 		return
@@ -159,7 +278,9 @@ func asyncRequest(uuid string, requestBody []byte) {
 		return
 	}
 
-	_, err = db.Exec("UPDATE queue SET answer = ? WHERE uuid=?", string(responseBody), uuid)
+	db, _ := getDb()
+	_, err = db.Exec("UPDATE async SET answer = ? WHERE uuid=?", string(responseBody), uuid)
+	db.Close()
 	if err != nil {
 		log.Printf("Failed to insert data into SQLite database: %v", err)
 	}
@@ -200,26 +321,28 @@ func buildDSN() (string, error) {
 	return dsn, nil
 }
 
-func main() {
-	// Define the Data Source Name (DSN)
-	dsn := "ollamaui:Guru-Disposal-Molasses@tcp(192.168.0.100:3306)/ollamaui"
-
+func getDb() (*sql.DB, error) {
 	// Open a connection to the database
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
-	defer db.Close()
 
 	// Verify the connection to the database
 	err = db.Ping()
 	if err != nil {
 		log.Fatalf("Error connecting to the database: %v", err)
 	}
+	return db, nil
+}
 
+func main() {
 	fmt.Println("Listening on port 32225")
 	http.HandleFunc("/async/chat", chatHandler)
 	http.HandleFunc("/", healthChkHandler)
 	http.HandleFunc("/async/response", responseHandler)
+	http.HandleFunc("/async/ps", psHandler)
+	http.HandleFunc("/async/tags", tagsHandler)
+	http.HandleFunc("/async/unload", unloadHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
