@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
@@ -162,6 +163,41 @@ func asyncRequest(uuid string, requestBody []byte) {
 	if err != nil {
 		log.Printf("Failed to insert data into SQLite database: %v", err)
 	}
+}
+
+var dsn string
+
+func init() {
+	var err error
+	dsn, err = buildDSN()
+	if err != nil {
+		log.Fatalf("Error building DSN: %v", err)
+	}
+}
+
+func buildDSN() (string, error) {
+	user := os.Getenv("DB_USER")
+	if user == "" {
+		return "", fmt.Errorf("DB_USER environment variable not set")
+	}
+
+	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		return "", fmt.Errorf("DB_PASSWORD environment variable not set")
+	}
+
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		return "", fmt.Errorf("DB_HOST environment variable not set")
+	}
+
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		return "", fmt.Errorf("DB_NAME environment variable not set")
+	}
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s", user, password, host, dbName)
+	return dsn, nil
 }
 
 func main() {
