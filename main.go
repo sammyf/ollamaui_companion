@@ -304,6 +304,8 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	fmt.Println("body : ", string(body))
+
 	var messages Messages
 	err = json.Unmarshal(body, &messages)
 	if err != nil {
@@ -312,7 +314,7 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-
+	fmt.Println("messages : ", messages)
 	db, _ := getDb()
 	_, err = db.Exec("INSERT INTO chat_log (user_id, persona, role, content, datetime) VALUES (?,?,?,?,?)", getUserId(), messages.persona, messages.role, messages.content, now)
 	if err != nil {
