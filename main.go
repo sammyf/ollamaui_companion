@@ -31,10 +31,10 @@ type LLMAnswer struct {
 
 // Messages
 type Messages struct {
-	id      int    `json:"id"`
-	role    string `json:"role"`
-	content string `json:"content"`
-	persona string `json:"persona"`
+	Id      int    `json:"id"`
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	Persona string `json:"persona"`
 }
 
 // var db *sql.DB
@@ -316,7 +316,7 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	fmt.Println("messages : ", messages)
 	db, _ := getDb()
-	_, err = db.Exec("INSERT INTO chat_log (user_id, persona, role, content, datetime) VALUES (?,?,?,?,?)", getUserId(), messages.persona, messages.role, messages.content, now)
+	_, err = db.Exec("INSERT INTO chat_log (user_id, persona, role, content, datetime) VALUES (?,?,?,?,?)", getUserId(), messages.Persona, messages.Role, messages.Content, now)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
@@ -341,7 +341,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var msg Messages
-		err = rows.Scan(&msg.id, &msg.persona, &msg.role, &msg.content)
+		err = rows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
 		if err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
@@ -350,7 +350,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(messages) == 0 {
-		messages = append(messages, Messages{id: 0, persona: "nobody", role: "user", content: "nothing to show"})
+		messages = append(messages, Messages{Id: 0, Persona: "nobody", Role: "user", Content: "nothing to show"})
 	}
 
 	jsonRes, err := json.Marshal(messages)
