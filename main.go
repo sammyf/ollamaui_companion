@@ -37,6 +37,16 @@ type Messages struct {
 	Persona string `json:"persona"`
 }
 
+type Login struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type LoginResult struct {
+	Result    bool   `json:"result"`
+	CsrfToken string `json:"csrf_token"`
+}
+
 // var db *sql.DB
 
 type Payload struct {
@@ -314,9 +324,13 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	fmt.Println("messages : ", messages)
+
+	userId, err := getUserId(w, r)
+	if err != nil {
+		return
+	}
 	db, _ := getDb()
-	_, err = db.Exec("INSERT INTO chat_log (user_id, persona, role, content, datetime) VALUES (?,?,?,?,?)", getUserId(), messages.Persona, messages.Role, messages.Content, now)
+	_, err = db.Exec("INSERT INTO chat_log (user_id, persona, role, content, datetime) VALUES (?,?,?,?,?)", userId, messages.Persona, messages.Role, messages.Content, now)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
@@ -331,8 +345,11 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer db.Close()
-
-	rows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id = ? ORDER BY datetime", getUserId())
+	userId, err := getUserId(w, r)
+	if err != nil {
+		return
+	}
+	rows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id = ? ORDER BY datetime", userId)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -364,6 +381,60 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonRes)
 }
 
+/////////////////////////////////////////////////////////////
+// Handler for Login and User Management
+/////////////////////////////////////////////////////////////
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var login Login
+	err = json.Unmarshal(body, &login)
+	if err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	db, _ := getDb()
+	var userid int
+	err = db.QueryRow("select id FROM users WHERE username=? AND password=?", login.Username, login.Password).Scan(&userid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			lr := LoginResult{Result: false, CsrfToken: ""}
+			rs, _ := json.Marshal(lr)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write(rs)
+		} else {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		db.Close()
+		return
+	}
+	csrfToken := uuid.New().String()
+	_, err = db.Exec("UPDATE users SET csrf=? WHERE id=?", csrfToken, userid)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+	db.Close()
+	lr := LoginResult{Result: true, CsrfToken: csrfToken}
+	rs, _ := json.Marshal(lr)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(rs)
+	return
+}
+
 var dsn string
 
 func init() {
@@ -374,8 +445,28 @@ func init() {
 	}
 }
 
-func getUserId() int {
-	return 1
+func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
+	csrfToken := r.Header.Get("X-CSRF-TOKEN")
+
+	db, _ := getDb()
+	var userid int
+	err := db.QueryRow("select id FROM users WHERE csrf=?", csrfToken).Scan(&userid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			lr := LoginResult{Result: false, CsrfToken: ""}
+			rs, _ := json.Marshal(lr)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write(rs)
+			return -1, err
+		} else {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return -1, err
+		}
+		db.Close()
+	}
+	return userid, nil
 }
 
 func buildDSN() (string, error) {
@@ -428,5 +519,6 @@ func main() {
 	http.HandleFunc("/async/unload", unloadHandler)
 	http.HandleFunc("/async/storeChatLog", storeChatLogHandler)
 	http.HandleFunc("/async/getChatLog", getChatLogHandler)
+	http.HandleFunc("/asynv/login", loginHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
