@@ -519,6 +519,6 @@ func main() {
 	http.HandleFunc("/async/unload", unloadHandler)
 	http.HandleFunc("/async/storeChatLog", storeChatLogHandler)
 	http.HandleFunc("/async/getChatLog", getChatLogHandler)
-	http.HandleFunc("/asynv/login", loginHandler)
+	http.HandleFunc("/async/login", loginHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
