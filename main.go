@@ -92,10 +92,10 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	db, _ := getDb()
 	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body))
+	defer db.Close()
 	if err != nil {
 		log.Printf("Failed to insert data into MariaDB database: %v", err)
 	}
-	db.Close()
 	fmt.Println("Sending Response to Ollama")
 	go func() {
 		asyncRequest(uniqueID, body)
@@ -115,6 +115,7 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 	// Fetch the answer from the queue table
 	var sqlAnswer string
 	db, _ := getDb()
+	defer db.Close()
 	err := db.QueryRow("SELECT answer FROM async WHERE uuid = ?", uid).Scan(&sqlAnswer)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -330,6 +331,7 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	db, _ := getDb()
+	defer db.Close()
 	_, err = db.Exec("INSERT INTO chat_log (user_id, persona, role, content, datetime) VALUES (?,?,?,?,?)", userId, messages.Persona, messages.Role, messages.Content, now)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -340,11 +342,11 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	var messages []Messages
 	db, err := getDb()
+	defer db.Close()
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	defer db.Close()
 	userId, err := getUserId(w, r)
 	if err != nil {
 		return
