@@ -533,19 +533,8 @@ func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
+	uid, _ := getUserId(w, r)
 
-	var uid int
-	err = json.Unmarshal(body, &uid)
-	if err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
-	}
 	generateSummary(uid)
 	w.WriteHeader(http.StatusOK)
 }
