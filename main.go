@@ -15,6 +15,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const memoryThreshold = 5
+
+type LLMRequest struct {
+	Model   string `json:"model"`
+	Prompt  string `json:"prompt"`
+	Suffix  string `json:"suffix"`
+	Options struct {
+		Temperature float64 `json:"temperature"`
+	}
+	Stream bool `json:"stream"`
+}
+
 // LLMAnswer
 type LLMAnswer struct {
 	Model              string   `json:"model"`
@@ -96,9 +108,8 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to insert data into MariaDB database: %v", err)
 	}
-	fmt.Println("Sending Response to Ollama")
 	go func() {
-		asyncRequest(uniqueID, body)
+		asyncChatRequest(uniqueID, body)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -174,7 +185,7 @@ func unloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	// Create custom HTTP client with a 10-minute timeout
+	// Create custom HTTP client with a 2 seconds timeout
 	client := &http.Client{
 		Timeout: 1,
 	}
@@ -262,7 +273,7 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Perform asynchronous request and store result in the database
-func asyncRequest(uuid string, requestBody []byte) {
+func asyncChatRequest(uuid string, requestBody []byte) {
 
 	// Create custom HTTP client with a 10-minute timeout
 	client := &http.Client{
@@ -299,6 +310,51 @@ func asyncRequest(uuid string, requestBody []byte) {
 	}
 }
 
+type memoryRequestStruct struct {
+	User_id           int `json:"user_id"`
+	First_chat_log_id int `json:"first_chat_log_id"`
+	Last_chat_log_id  int `json:"last_chat_log_id"`
+}
+
+// Perform asynchronous summary request and store it as memory in the database
+func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte) {
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/generate", bytes.NewBuffer(requestBody))
+	if err != nil {
+		log.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to make request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read response from external service: %v", err)
+		return
+	}
+
+	db, _ := getDb()
+	_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content)  VALUES (?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, string(responseBody))
+	_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
+	db.Close()
+	if err != nil {
+		log.Printf("Failed to insert data into SQLite database: %v", err)
+	}
+}
+
 /////////////////////////////////////////////////////////////
 // Handler for Chatlog and Memory Management
 /////////////////////////////////////////////////////////////
@@ -314,8 +370,6 @@ func storeChatLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-
-	fmt.Println("body : ", string(body))
 
 	var messages Messages
 	err = json.Unmarshal(body, &messages)
@@ -381,6 +435,119 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonRes)
+}
+
+func generateChatSegment(uid int) (int, int, string) {
+	db, err := getDb()
+	if err != nil {
+		log.Printf("Failed to open database: %v", err)
+		return -1, -1, ""
+	}
+	defer db.Close()
+
+	var username string
+	err = db.QueryRow("SELECT username FROM users WHERE id = ?", uid).Scan(&username)
+	if err != nil {
+		log.Printf("Failed to execute query: %v", err)
+		return -1, -1, ""
+	}
+
+	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? ORDER BY id"
+	rows, err := db.Query(query, uid)
+	if err != nil {
+		log.Printf("Failed to execute query: %v", err)
+		return -1, -1, ""
+	}
+	defer rows.Close()
+
+	segment := ""
+	count := -1
+	var firstID, lastID int
+	var id int
+	var persona, role, content string
+
+	for rows.Next() {
+		err := rows.Scan(&id, &persona, &role, &content)
+		if err != nil {
+			log.Printf("Failed to execute query (2): %v", err)
+			return -1, -1, ""
+		}
+
+		if role == "system" {
+			continue
+		}
+		if role == "user" {
+			segment += fmt.Sprintf("%s said '\n%s\n'\n\n", username, content)
+			lastID = id
+			count++
+		} else if role == "assistant" {
+			segment += fmt.Sprintf("%s said '\n%s\n'\n\n", persona, content)
+			lastID = id
+			count++
+		}
+		if count == 0 {
+			firstID = id
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return -1, -1, ""
+	}
+
+	if count < memoryThreshold {
+		return -1, -1, ""
+	}
+
+	return firstID, lastID, segment
+}
+
+func generateSummary(uid int) {
+	firstId, lastId, chatSection := generateChatSegment(uid)
+	llmRequest := LLMRequest{
+		Model:  "tinydolphin",
+		Prompt: chatSection,
+		Suffix: "Write a summary of the partial discussion written above.",
+		Options: struct {
+			Temperature float64 `json:"temperature"`
+		}{
+			Temperature: 1.0,
+		},
+		Stream: false,
+	}
+	options := memoryRequestStruct{
+		User_id:           uid,
+		First_chat_log_id: firstId,
+		Last_chat_log_id:  lastId,
+	}
+	body, err := json.Marshal(llmRequest)
+	if err != nil {
+		log.Printf("Failed to generate summary: %v", err)
+		return
+	}
+	go asyncSummaryRequest(options, body)
+}
+
+func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var uid int
+	err = json.Unmarshal(body, &uid)
+	if err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	generateSummary(uid)
+	w.WriteHeader(http.StatusOK)
 }
 
 /////////////////////////////////////////////////////////////
@@ -521,6 +688,7 @@ func main() {
 	http.HandleFunc("/async/unload", unloadHandler)
 	http.HandleFunc("/async/storeChatLog", storeChatLogHandler)
 	http.HandleFunc("/async/getChatLog", getChatLogHandler)
+	http.HandleFunc("/async/generateMemories", generateMemoriesHandler)
 	http.HandleFunc("/async/login", loginHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
