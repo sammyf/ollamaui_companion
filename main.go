@@ -529,7 +529,7 @@ func generateSummary(uid int) {
 }
 
 func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodGet {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
