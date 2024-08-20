@@ -340,7 +340,6 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 		// Found an alternative model name
 		w.Write([]byte(`"` + alternativeName + `"`))
 	} else {
-		ewrtew
 		// All model names match the summarizer
 		w.Write([]byte(`"` + summarizer + `"`))
 	}
