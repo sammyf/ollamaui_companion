@@ -295,7 +295,7 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/ps", nil)
 	if err != nil {
 		log.Printf("Failed to create new request: %v", err)
-		return
+		w.Write([]byte(`"none"`))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -303,20 +303,22 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to make PS request to external service: %v", err)
-		return
+		w.Write([]byte(`"none"`))
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Failed to read response from external service: %v", err)
-		return
+		w.Write([]byte(`"none"`))
 	}
+
+	fmt.Printf(string(responseBody))
 	var currentModelList PsModelsData
 	err = json.Unmarshal(responseBody, &currentModelList)
 	if err != nil {
 		log.Printf("Failed to unmarshal model list response: %v", err)
-		return
+		w.Write([]byte(`"none"`))
 	}
 
 	summarizer := os.Getenv("SUMMARIZER")
@@ -335,13 +337,13 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 
 	if len(currentModelList.Models) == 0 {
 		// No models found
-		w.Write([]byte(`"none"`))
+		w.Write([]byte(`none`))
 	} else if foundAlternative {
 		// Found an alternative model name
-		w.Write([]byte(`"` + alternativeName + `"`))
+		w.Write([]byte(alternativeName))
 	} else {
 		// All model names match the summarizer
-		w.Write([]byte(`"` + summarizer + `"`))
+		w.Write([]byte(summarizer))
 	}
 }
 
@@ -598,9 +600,8 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 		return
 	}
 
-	if os.Getenv("DEBUG") == "1" {
-		fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
-	} else {
+	fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
+	if os.Getenv("DEBUG") != "1" {
 		db, _ := getDb()
 		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
 		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
