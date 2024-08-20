@@ -1,6 +1,8 @@
+#!/bin/bash
+export DEBUG=0
 export DB_USER=
 export DB_PASSWORD=
 export DB_HOST=
 export DB_NAME=
 export SUMMARIZER=
-./beezle
+./m

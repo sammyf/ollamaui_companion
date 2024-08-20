@@ -334,6 +334,49 @@ type memoryRequestStruct struct {
 // Perform asynchronous summary request and store it as memory in the database
 func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte) {
 
+	summary, err := callGenerateOnSummarizer(requestBody)
+	if err != nil {
+		log.Printf("Failed to generate summary: %v", err)
+		return
+	}
+
+	llmRequest := LLMRequest{
+		Model:  os.Getenv("SUMMARIZER"),
+		Prompt: summary + "\ngive me 10 semi-colon separated keywords for the previous text",
+		Options: struct {
+			Temperature float64 `json:"temperature"`
+		}{
+			Temperature: 1.0,
+		},
+		Stream: false,
+	}
+
+	requestBody, err = json.Marshal(llmRequest)
+	if err != nil {
+		log.Printf("Failed to generate keywords: %v", err)
+		return
+	}
+
+	keywords, err := callGenerateOnSummarizer(requestBody)
+	if err != nil {
+		log.Printf("Failed to generate keywords: %v", err)
+		return
+	}
+
+	if os.Getenv("DEBUG") == "1" {
+		fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
+	} else {
+		db, _ := getDb()
+		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
+		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
+		db.Close()
+		if err != nil {
+			log.Printf("Failed to insert data into SQLite database: %v", err)
+		}
+	}
+}
+
+func callGenerateOnSummarizer(requestBody []byte) (string, error) {
 	// Create custom HTTP client with a 10-minute timeout
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
@@ -342,43 +385,36 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 	// Create a new request
 	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/generate", bytes.NewBuffer(requestBody))
 	if err != nil {
-		log.Printf("Failed to create new request: %v", err)
-		return
+		msg := fmt.Sprintf("Failed to create new request: %v", err)
+		return msg, err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to make request to external service: %v", err)
-		return
+		msg := fmt.Sprintf("Failed to make request to external service: %v", err)
+		return msg, err
 	}
+
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read response from external service: %v", err)
-		return
+		msg := fmt.Sprintf("Failed to read response from external service: %v", err)
+		return msg, err
 	}
+
 	var generateResponse LLMGenerateAnswer
 
 	err = json.Unmarshal(responseBody, &generateResponse)
 	if err != nil {
-		log.Printf("Could not unmarshal response: %v", err)
-		return
+		msg := fmt.Sprintf("Could not unmarshal response: %v", err)
+		return msg, err
 	}
 
-	if os.Getenv("DEBUG") == "1" {
-		fmt.Println("\n\n" + generateResponse.Response + "\n\n")
-	} else {
-		db, _ := getDb()
-		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content)  VALUES (?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, string(generateResponse.Response))
-		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
-		db.Close()
-		if err != nil {
-			log.Printf("Failed to insert data into SQLite database: %v", err)
-		}
-	}
+	return generateResponse.Response, nil
 }
 
 /////////////////////////////////////////////////////////////
