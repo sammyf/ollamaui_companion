@@ -41,6 +41,21 @@ type LLMAnswer struct {
 	EvalDuration       int      `json:"eval_duration"`
 }
 
+// LLMGenerateAnswer
+type LLMGenerateAnswer struct {
+	Model              string    `json:"model"`
+	CreatedAt          time.Time `json:"created_at"`
+	Response           string    `json:"response"`
+	Done               bool      `json:"done"`
+	Context            []int     `json:"context"`
+	TotalDuration      int64     `json:"total_duration"`
+	LoadDuration       int64     `json:"load_duration"`
+	PromptEvalCount    int       `json:"prompt_eval_count"`
+	PromptEvalDuration int       `json:"prompt_eval_duration"`
+	EvalCount          int       `json:"eval_count"`
+	EvalDuration       int64     `json:"eval_duration"`
+}
+
 // Messages
 type Messages struct {
 	Id      int    `json:"id"`
@@ -345,9 +360,16 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 		log.Printf("Failed to read response from external service: %v", err)
 		return
 	}
+	var generateResponse LLMGenerateAnswer
+
+	err = json.Unmarshal(responseBody, &generateResponse)
+	if err != nil {
+		log.Printf("Could not unmarshal response: %v", err)
+		return
+	}
 
 	db, _ := getDb()
-	_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content)  VALUES (?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, string(responseBody))
+	_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content)  VALUES (?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, string(generateResponse.Response))
 	_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
 	db.Close()
 	if err != nil {
