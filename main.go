@@ -74,6 +74,35 @@ type LoginResult struct {
 	CsrfToken string `json:"csrf_token"`
 }
 
+type memoryRequestStruct struct {
+	User_id           int `json:"user_id"`
+	First_chat_log_id int `json:"first_chat_log_id"`
+	Last_chat_log_id  int `json:"last_chat_log_id"`
+}
+
+type PsModelDetail struct {
+	ParentModel       string   `json:"parent_model"`
+	Format            string   `json:"format"`
+	Family            string   `json:"family"`
+	Families          []string `json:"families"`
+	ParameterSize     string   `json:"parameter_size"`
+	QuantizationLevel string   `json:"quantization_level"`
+}
+
+type PsModel struct {
+	Name      string         `json:"name"`
+	Model     string         `json:"model"`
+	Size      int            `json:"size"`
+	Digest    string         `json:"digest"`
+	Details   *PsModelDetail `json:"details"`
+	ExpiresAt string         `json:"expires_at"`
+	SizeVram  int            `json:"size_vram"`
+}
+
+type PsModelsData struct {
+	Models []PsModel `json:"models"`
+}
+
 // var db *sql.DB
 
 type Payload struct {
@@ -283,8 +312,38 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to read response from external service: %v", err)
 		return
 	}
+	var currentModelList PsModelsData
+	err = json.Unmarshal(responseBody, &currentModelList)
+	if err != nil {
+		log.Printf("Failed to unmarshal model list response: %v", err)
+		return
+	}
+
+	summarizer := os.Getenv("SUMMARIZER")
+	foundAlternative := false
+	var alternativeName string
+
+	for _, model := range currentModelList.Models {
+		if model.Name != summarizer {
+			alternativeName = model.Name
+			foundAlternative = true
+			break
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(responseBody)
+
+	if len(currentModelList.Models) == 0 {
+		// No models found
+		w.Write([]byte(`"none"`))
+	} else if foundAlternative {
+		// Found an alternative model name
+		w.Write([]byte(`"` + alternativeName + `"`))
+	} else {
+		ewrtew
+		// All model names match the summarizer
+		w.Write([]byte(`"` + summarizer + `"`))
+	}
 }
 
 // Perform asynchronous request and store result in the database
@@ -323,98 +382,6 @@ func asyncChatRequest(uuid string, requestBody []byte) {
 	if err != nil {
 		log.Printf("Failed to insert data into SQLite database: %v", err)
 	}
-}
-
-type memoryRequestStruct struct {
-	User_id           int `json:"user_id"`
-	First_chat_log_id int `json:"first_chat_log_id"`
-	Last_chat_log_id  int `json:"last_chat_log_id"`
-}
-
-// Perform asynchronous summary request and store it as memory in the database
-func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte) {
-
-	summary, err := callGenerateOnSummarizer(requestBody)
-	if err != nil {
-		log.Printf("Failed to generate summary: %v", err)
-		return
-	}
-
-	llmRequest := LLMRequest{
-		Model:  os.Getenv("SUMMARIZER"),
-		Prompt: summary + "\ngive me 10 semi-colon separated keywords for the previous text",
-		Options: struct {
-			Temperature float64 `json:"temperature"`
-		}{
-			Temperature: 1.0,
-		},
-		Stream: false,
-	}
-
-	requestBody, err = json.Marshal(llmRequest)
-	if err != nil {
-		log.Printf("Failed to generate keywords: %v", err)
-		return
-	}
-
-	keywords, err := callGenerateOnSummarizer(requestBody)
-	if err != nil {
-		log.Printf("Failed to generate keywords: %v", err)
-		return
-	}
-
-	if os.Getenv("DEBUG") == "1" {
-		fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
-	} else {
-		db, _ := getDb()
-		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
-		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
-		db.Close()
-		if err != nil {
-			log.Printf("Failed to insert data into SQLite database: %v", err)
-		}
-	}
-}
-
-func callGenerateOnSummarizer(requestBody []byte) (string, error) {
-	// Create custom HTTP client with a 10-minute timeout
-	client := &http.Client{
-		Timeout: 10 * time.Minute,
-	}
-
-	// Create a new request
-	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/generate", bytes.NewBuffer(requestBody))
-	if err != nil {
-		msg := fmt.Sprintf("Failed to create new request: %v", err)
-		return msg, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	// Perform the request
-	resp, err := client.Do(req)
-	if err != nil {
-		msg := fmt.Sprintf("Failed to make request to external service: %v", err)
-		return msg, err
-	}
-
-	defer resp.Body.Close()
-
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		msg := fmt.Sprintf("Failed to read response from external service: %v", err)
-		return msg, err
-	}
-
-	var generateResponse LLMGenerateAnswer
-
-	err = json.Unmarshal(responseBody, &generateResponse)
-	if err != nil {
-		msg := fmt.Sprintf("Could not unmarshal response: %v", err)
-		return msg, err
-	}
-
-	return generateResponse.Response, nil
 }
 
 /////////////////////////////////////////////////////////////
@@ -598,6 +565,92 @@ func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	generateSummary(uid)
 	w.WriteHeader(http.StatusOK)
+}
+
+// Perform asynchronous summary request and store it as memory in the database
+func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte) {
+
+	summary, err := callGenerateOnSummarizer(requestBody)
+	if err != nil {
+		log.Printf("Failed to generate summary: %v", err)
+		return
+	}
+
+	llmRequest := LLMRequest{
+		Model:  os.Getenv("SUMMARIZER"),
+		Prompt: summary + "\ngive me 10 semi-colon separated keywords for the previous text",
+		Options: struct {
+			Temperature float64 `json:"temperature"`
+		}{
+			Temperature: 1.0,
+		},
+		Stream: false,
+	}
+
+	requestBody, err = json.Marshal(llmRequest)
+	if err != nil {
+		log.Printf("Failed to generate keywords: %v", err)
+		return
+	}
+
+	keywords, err := callGenerateOnSummarizer(requestBody)
+	if err != nil {
+		log.Printf("Failed to generate keywords: %v", err)
+		return
+	}
+
+	if os.Getenv("DEBUG") == "1" {
+		fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
+	} else {
+		db, _ := getDb()
+		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
+		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
+		db.Close()
+		if err != nil {
+			log.Printf("Failed to insert data into SQLite database: %v", err)
+		}
+	}
+}
+
+func callGenerateOnSummarizer(requestBody []byte) (string, error) {
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/generate", bytes.NewBuffer(requestBody))
+	if err != nil {
+		msg := fmt.Sprintf("Failed to create new request: %v", err)
+		return msg, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to make request to external service: %v", err)
+		return msg, err
+	}
+
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to read response from external service: %v", err)
+		return msg, err
+	}
+
+	var generateResponse LLMGenerateAnswer
+
+	err = json.Unmarshal(responseBody, &generateResponse)
+	if err != nil {
+		msg := fmt.Sprintf("Could not unmarshal response: %v", err)
+		return msg, err
+	}
+
+	return generateResponse.Response, nil
 }
 
 /////////////////////////////////////////////////////////////
