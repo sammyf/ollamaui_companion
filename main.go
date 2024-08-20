@@ -368,15 +368,17 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 		return
 	}
 
-	// commented out to find the best small model for summaries more easily.
-	// db, _ := getDb()
-	// _, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content)  VALUES (?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, string(generateResponse.Response))
-	// _, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
-	// db.Close()
-	// if err != nil {
-	//	log.Printf("Failed to insert data into SQLite database: %v", err)
-	// }
-	fmt.Println("\n\n" + generateResponse.Response + "\n\n")
+	if os.Getenv("DEBUG") == "1" {
+		fmt.Println("\n\n" + generateResponse.Response + "\n\n")
+	} else {
+		db, _ := getDb()
+		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content)  VALUES (?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, string(generateResponse.Response))
+		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
+		db.Close()
+		if err != nil {
+			log.Printf("Failed to insert data into SQLite database: %v", err)
+		}
+	}
 }
 
 /////////////////////////////////////////////////////////////
