@@ -505,9 +505,8 @@ func generateChatSegment(uid int) (int, int, string) {
 func generateSummary(uid int) {
 	firstId, lastId, chatSection := generateChatSegment(uid)
 	llmRequest := LLMRequest{
-		Model:  "tinydolphin",
-		Prompt: chatSection,
-		Suffix: "Write a summary of the partial discussion written above.",
+		Model:  os.Getenv("SUMMARIZER"),
+		Prompt: chatSection + "\nWrite a summary of the discussion written above.",
 		Options: struct {
 			Temperature float64 `json:"temperature"`
 		}{
