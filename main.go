@@ -5,14 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"time"
-
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/google/uuid"
 )
 
 const memoryThreshold = 5
@@ -62,6 +61,14 @@ type Messages struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 	Persona string `json:"persona"`
+}
+
+type MessagesExtended struct {
+	Id       int       `json:"id"`
+	Role     string    `json:"role"`
+	Content  string    `json:"content"`
+	Persona  string    `json:"persona"`
+	Datetime time.Time `json:"datetime"`
 }
 
 type Login struct {
@@ -661,21 +668,46 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	db, _ := getDb()
 	defer db.Close()
-	latestRows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id=? AND is_summarized = false", uid)
-	if err != nil {
-		log.Printf("Failed to get latest logs from chat_log: %v", err)
-	}
-	defer latestRows.Close()
+
 	summaryRows, err := db.Query("SELECT m.id, 'system' AS persona, 'user' AS role, m.content, cl.datetime FROM memories AS m, chat_log AS cl WHERE m.user_id=? AND cl.id = m.last_chat_log_id ORDER BY last_chat_log_id DESC LIMIT 10", uid)
 	if err != nil {
 		log.Printf("Failed to get latest 10 memories from memories: %v", err)
 	}
-	defer summaryRows.Close()
+	//defer summaryRows.Close()
 
 	var messages = []Messages{}
+	var latestDatetime time.Time
+
 	for summaryRows.Next() {
+		var msgExt MessagesExtended
+		err = summaryRows.Scan(&msgExt.Id, &msgExt.Persona, &msgExt.Role, &msgExt.Content, &msgExt.Datetime)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if msgExt.Datetime.After(latestDatetime) {
+			latestDatetime = msgExt.Datetime
+		}
+
+		formattedContent := fmt.Sprintf("%s ( %s )", msgExt.Content, msgExt.Datetime.Format(time.RFC3339))
+
+		msg := Messages{msgExt.Id, "assistant", formattedContent, "Memory"}
+		messages = append(messages, msg)
+	}
+
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	latestRows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id=? AND is_summarized = false ", uid)
+	if err != nil {
+		log.Printf("Failed to get latest logs from chat_log: %v", err)
+	}
+	//defer latestRows.Close()
+
+	for latestRows.Next() {
 		var msg Messages
-		err = summaryRows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
+		err = latestRows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
 		if err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
