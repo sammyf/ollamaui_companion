@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"time"
@@ -103,7 +104,7 @@ type PsModel struct {
 	Digest    string         `json:"digest"`
 	Details   *PsModelDetail `json:"details"`
 	ExpiresAt string         `json:"expires_at"`
-	SizeVram  int            `json:"size_vram"`
+	SizeVram  big.Int        `json:"size_vram"`
 }
 
 type PsModelsData struct {
@@ -157,7 +158,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body))
 	defer db.Close()
 	if err != nil {
-		log.Printf("Failed to insert data into MariaDB database: %v", err)
+		fmt.Printf("Failed to insert data into MariaDB database: %v", err)
 	}
 	go func() {
 		asyncChatRequest(uniqueID, body)
@@ -244,7 +245,7 @@ func unloadHandler(w http.ResponseWriter, r *http.Request) {
 	// Create a new request
 	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
 	if err != nil {
-		log.Printf("Failed to create new request: %v", err)
+		fmt.Printf("Failed to create new request: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -252,7 +253,7 @@ func unloadHandler(w http.ResponseWriter, r *http.Request) {
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to make Cleanup request to external service: %v", err)
+		fmt.Printf("Failed to make Cleanup request to external service: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -269,7 +270,7 @@ func tagsHandler(w http.ResponseWriter, r *http.Request) {
 	// Create a new request
 	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/tags", nil)
 	if err != nil {
-		log.Printf("Failed to create new request: %v", err)
+		fmt.Printf("Failed to create new request: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -277,14 +278,14 @@ func tagsHandler(w http.ResponseWriter, r *http.Request) {
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to make PS request to external service: %v", err)
+		fmt.Printf("Failed to make PS request to external service: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read response from external service: %v", err)
+		fmt.Printf("Failed to read response from external service: %v", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -301,7 +302,7 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	// Create a new request
 	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/ps", nil)
 	if err != nil {
-		log.Printf("Failed to create new request: %v", err)
+		fmt.Printf("Failed to create new request: %v", err)
 		w.Write([]byte(`"none"`))
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -309,14 +310,14 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to make PS request to external service: %v", err)
+		fmt.Printf("Failed to make PS request to external service: %v", err)
 		w.Write([]byte(`"none"`))
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read response from external service: %v", err)
+		fmt.Printf("Failed to read response from external service: %v", err)
 		w.Write([]byte(`"none"`))
 	}
 
@@ -324,7 +325,7 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	var currentModelList PsModelsData
 	err = json.Unmarshal(responseBody, &currentModelList)
 	if err != nil {
-		log.Printf("Failed to unmarshal model list response: %v", err)
+		fmt.Printf("Failed to unmarshal model list response: %v", err)
 		w.Write([]byte(`"none"`))
 	}
 
@@ -365,7 +366,7 @@ func asyncChatRequest(uuid string, requestBody []byte) {
 	// Create a new request
 	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
 	if err != nil {
-		log.Printf("Failed to create new request: %v", err)
+		fmt.Printf("Failed to create new request: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -373,14 +374,14 @@ func asyncChatRequest(uuid string, requestBody []byte) {
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to make request to external service: %v", err)
+		fmt.Printf("Failed to make request to external service: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read response from external service: %v", err)
+		fmt.Printf("Failed to read response from external service: %v", err)
 		return
 	}
 
@@ -388,7 +389,7 @@ func asyncChatRequest(uuid string, requestBody []byte) {
 	_, err = db.Exec("UPDATE async SET answer = ? WHERE uuid=?", string(responseBody), uuid)
 	db.Close()
 	if err != nil {
-		log.Printf("Failed to insert data into SQLite database: %v", err)
+		fmt.Printf("Failed to insert data into SQLite database: %v", err)
 	}
 }
 
@@ -477,7 +478,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 func generateChatSegment(uid int) (int, int, string) {
 	db, err := getDb()
 	if err != nil {
-		log.Printf("Failed to open database: %v", err)
+		fmt.Printf("Failed to open database: %v", err)
 		return -1, -1, ""
 	}
 	defer db.Close()
@@ -485,14 +486,14 @@ func generateChatSegment(uid int) (int, int, string) {
 	var username string
 	err = db.QueryRow("SELECT username FROM users WHERE id = ?", uid).Scan(&username)
 	if err != nil {
-		log.Printf("Failed to execute query: %v", err)
+		fmt.Printf("Failed to execute query: %v", err)
 		return -1, -1, ""
 	}
 
 	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? ORDER BY id"
 	rows, err := db.Query(query, uid)
 	if err != nil {
-		log.Printf("Failed to execute query: %v", err)
+		fmt.Printf("Failed to execute query: %v", err)
 		return -1, -1, ""
 	}
 	defer rows.Close()
@@ -506,7 +507,7 @@ func generateChatSegment(uid int) (int, int, string) {
 	for rows.Next() {
 		err := rows.Scan(&id, &persona, &role, &content)
 		if err != nil {
-			log.Printf("Failed to execute query (2): %v", err)
+			fmt.Printf("Failed to execute query (2): %v", err)
 			return -1, -1, ""
 		}
 
@@ -558,7 +559,7 @@ func generateSummary(uid int) {
 	}
 	body, err := json.Marshal(llmRequest)
 	if err != nil {
-		log.Printf("Failed to generate summary: %v", err)
+		fmt.Printf("Failed to generate summary: %v", err)
 		return
 	}
 	go asyncSummaryRequest(options, body)
@@ -580,7 +581,7 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 
 	summary, err := callGenerateOnSummarizer(requestBody)
 	if err != nil {
-		log.Printf("Failed to generate summary: %v", err)
+		fmt.Printf("Failed to generate summary: %v", err)
 		return
 	}
 
@@ -597,13 +598,13 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 
 	requestBody, err = json.Marshal(llmRequest)
 	if err != nil {
-		log.Printf("Failed to generate keywords: %v", err)
+		fmt.Printf("Failed to generate keywords: %v", err)
 		return
 	}
 
 	keywords, err := callGenerateOnSummarizer(requestBody)
 	if err != nil {
-		log.Printf("Failed to generate keywords: %v", err)
+		fmt.Printf("Failed to generate keywords: %v", err)
 		return
 	}
 
@@ -614,7 +615,7 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
 		db.Close()
 		if err != nil {
-			log.Printf("Failed to insert data into SQLite database: %v", err)
+			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
 	}
 }
@@ -663,7 +664,7 @@ func callGenerateOnSummarizer(requestBody []byte) (string, error) {
 func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 	uid, err := getUserId(w, r)
 	if err != nil {
-		log.Printf("Failed to get user id: %v", err)
+		fmt.Printf("Failed to get user id: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to get user id: %v", err), http.StatusInternalServerError)
 	}
 	db, _ := getDb()
@@ -671,7 +672,7 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 
 	summaryRows, err := db.Query("SELECT m.id, 'system' AS persona, 'user' AS role, m.content, cl.datetime FROM memories AS m, chat_log AS cl WHERE m.user_id=? AND cl.id = m.last_chat_log_id ORDER BY last_chat_log_id DESC LIMIT 10", uid)
 	if err != nil {
-		log.Printf("Failed to get latest 10 memories from memories: %v", err)
+		fmt.Printf("Failed to get latest 10 memories from memories: %v", err)
 	}
 	//defer summaryRows.Close()
 
@@ -682,7 +683,7 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 		var msgExt MessagesExtended
 		err = summaryRows.Scan(&msgExt.Id, &msgExt.Persona, &msgExt.Role, &msgExt.Content, &msgExt.Datetime)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
 			return
 		}
 		if msgExt.Datetime.After(latestDatetime) {
@@ -699,9 +700,9 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 
-	latestRows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id=? AND is_summarized = false ", uid)
+	latestRows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id=? AND is_summarized = false AND datetime > ? AND role != 'system'", uid, latestDatetime)
 	if err != nil {
-		log.Printf("Failed to get latest logs from chat_log: %v", err)
+		fmt.Printf("Failed to get latest logs from chat_log: %v", err)
 	}
 	//defer latestRows.Close()
 
@@ -709,7 +710,7 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 		var msg Messages
 		err = latestRows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(w, "Internal Server Error 2", http.StatusInternalServerError)
 			return
 		}
 		messages = append(messages, msg)
@@ -776,6 +777,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 	db.Close()
+	fmt.Println("\n\nCSRF:", csrfToken)
 	lr := LoginResult{Result: true, CsrfToken: csrfToken}
 	rs, _ := json.Marshal(lr)
 	w.Header().Set("Content-Type", "application/json")
