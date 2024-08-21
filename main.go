@@ -435,7 +435,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	rows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id = ? ORDER BY datetime", userId)
+	rows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id = ? ORDER BY datetime", userId)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -651,6 +651,51 @@ func callGenerateOnSummarizer(requestBody []byte) (string, error) {
 	}
 
 	return generateResponse.Response, nil
+}
+
+func resumeDiscussionHandler(w http.ResponseWriter, r *http.Request) {
+	uid, err := getUserId(w, r)
+	if err != nil {
+		log.Printf("Failed to get user id: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get user id: %v", err), http.StatusInternalServerError)
+	}
+	db, _ := getDb()
+	defer db.Close()
+	latestRows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id=? AND is_summarized = false", uid)
+	if err != nil {
+		log.Printf("Failed to get latest logs from chat_log: %v", err)
+	}
+	defer latestRows.Close()
+	summaryRows, err := db.Query("SELECT m.id, 'system' AS persona, 'user' AS role, m.content, cl.datetime FROM memories AS m, chat_log AS cl WHERE m.user_id=? AND cl.id = m.last_chat_log_id ORDER BY last_chat_log_id DESC LIMIT 10", uid)
+	if err != nil {
+		log.Printf("Failed to get latest 10 memories from memories: %v", err)
+	}
+	defer summaryRows.Close()
+
+	var messages = []Messages{}
+	for summaryRows.Next() {
+		var msg Messages
+		err = summaryRows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		messages = append(messages, msg)
+	}
+
+	if len(messages) == 0 {
+		messages = append(messages, Messages{Id: 0, Persona: "nobody", Role: "user", Content: "nothing to show"})
+	}
+
+	jsonRes, err := json.Marshal(messages)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonRes)
 }
 
 /////////////////////////////////////////////////////////////
