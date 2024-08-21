@@ -785,6 +785,21 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func loginByCsrfHandler(w http.ResponseWriter, r *http.Request) {
+	_, err := getUserId(w, r)
+	var lr LoginResult
+	if err != nil {
+		lr = LoginResult{Result: false, CsrfToken: ""}
+	} else {
+		lr = LoginResult{Result: false, CsrfToken: r.Header.Get("X-CSRF-TOKEN")}
+	}
+	rs, _ := json.Marshal(lr)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(rs)
+	return
+}
+
 var dsn string
 
 func init() {
@@ -872,5 +887,6 @@ func main() {
 	http.HandleFunc("/async/generateMemories", generateMemoriesHandler)
 	http.HandleFunc("/async/retrieveDiscussion", retrieveDiscussionHandler)
 	http.HandleFunc("/async/login", loginHandler)
+	http.HandleFunc("/async/loginByCsrf", loginByCsrfHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
