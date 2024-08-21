@@ -839,7 +839,7 @@ func buildDSN() (string, error) {
 		return "", fmt.Errorf("DB_NAME environment variable not set")
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s", user, password, host, dbName)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true", user, password, host, dbName)
 	return dsn, nil
 }
 
