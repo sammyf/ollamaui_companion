@@ -438,11 +438,12 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
 		return
 	}
-	userId, err := getUserId(w, r)
-	if err != nil {
-		return
-	}
-	rows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id = ? ORDER BY datetime", userId)
+	// userId, err := getUserId(w, r)
+	//if err != nil {
+	//	return
+	//}
+	userId := 1
+	rows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id = ? ORDER BY id", userId)
 	if err != nil {
 		http.Error(w, "Internal Server Error 2", http.StatusInternalServerError)
 		return
