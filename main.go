@@ -261,7 +261,6 @@ func unloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func tagsHandler(w http.ResponseWriter, r *http.Request) {
-
 	// Create custom HTTP client with a 10-minute timeout
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
