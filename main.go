@@ -653,7 +653,7 @@ func callGenerateOnSummarizer(requestBody []byte) (string, error) {
 	return generateResponse.Response, nil
 }
 
-func resumeDiscussionHandler(w http.ResponseWriter, r *http.Request) {
+func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 	uid, err := getUserId(w, r)
 	if err != nil {
 		log.Printf("Failed to get user id: %v", err)
@@ -837,6 +837,7 @@ func main() {
 	http.HandleFunc("/async/storeChatLog", storeChatLogHandler)
 	http.HandleFunc("/async/getChatLog", getChatLogHandler)
 	http.HandleFunc("/async/generateMemories", generateMemoriesHandler)
+	http.HandleFunc("/async/retrieveDiscussion", retrieveDiscussionHandler)
 	http.HandleFunc("/async/login", loginHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
