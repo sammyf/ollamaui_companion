@@ -435,7 +435,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := getDb()
 	defer db.Close()
 	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
 		return
 	}
 	userId, err := getUserId(w, r)
@@ -444,7 +444,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := db.Query("SELECT id, persona, role, content, datetime FROM chat_log WHERE user_id = ? ORDER BY datetime", userId)
 	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error 2", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -453,7 +453,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 		var msg Messages
 		err = rows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(w, "Internal Server Error 3", http.StatusInternalServerError)
 			return
 		}
 		messages = append(messages, msg)
@@ -465,7 +465,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonRes, err := json.Marshal(messages)
 	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error 4", http.StatusInternalServerError)
 		return
 	}
 
