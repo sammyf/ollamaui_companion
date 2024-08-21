@@ -689,7 +689,7 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 			latestDatetime = msgExt.Datetime
 		}
 
-		formattedContent := fmt.Sprintf("%s ( %s )", msgExt.Content, msgExt.Datetime.Format(time.RFC3339))
+		formattedContent := fmt.Sprintf("(%s) %s", msgExt.Datetime.Format(time.RFC3339), msgExt.Content)
 
 		msg := Messages{msgExt.Id, "assistant", formattedContent, "Memory"}
 		messages = append(messages, msg)
