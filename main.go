@@ -344,13 +344,13 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 
 	if len(currentModelList.Models) == 0 {
 		// No models found
-		w.Write([]byte(`none`))
+		w.Write([]byte(`{"model":"none"}`))
 	} else if foundAlternative {
 		// Found an alternative model name
-		w.Write([]byte(alternativeName))
+		w.Write([]byte(`{"model":"` + alternativeName + `"}`))
 	} else {
 		// All model names match the summarizer
-		w.Write([]byte(summarizer))
+		w.Write([]byte(`{"model":"` + summarizer + `"}`))
 	}
 }
 
