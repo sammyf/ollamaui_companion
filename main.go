@@ -155,8 +155,9 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("uniqueId: " + uniqueID)
 
 	db, _ := getDb()
-	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body))
 	defer db.Close()
+
+	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body))
 	if err != nil {
 		fmt.Printf("Failed to insert data into MariaDB database: %v", err)
 	}
@@ -385,8 +386,8 @@ func asyncChatRequest(uuid string, requestBody []byte) {
 	}
 
 	db, _ := getDb()
+	defer db.Close()
 	_, err = db.Exec("UPDATE async SET answer = ? WHERE uuid=?", string(responseBody), uuid)
-	db.Close()
 	if err != nil {
 		fmt.Printf("Failed to insert data into SQLite database: %v", err)
 	}
@@ -477,11 +478,11 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 
 func generateChatSegment(uid int) (int, int, string) {
 	db, err := getDb()
+	defer db.Close()
 	if err != nil {
 		fmt.Printf("Failed to open database: %v", err)
 		return -1, -1, ""
 	}
-	defer db.Close()
 
 	var username string
 	err = db.QueryRow("SELECT username FROM users WHERE id = ?", uid).Scan(&username)
@@ -611,9 +612,9 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 	fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
 	if os.Getenv("DEBUG") != "1" {
 		db, _ := getDb()
+		defer db.Close()
 		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
 		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
-		db.Close()
 		if err != nil {
 			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
@@ -755,6 +756,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := getDb()
+	defer db.Close()
 	var userid int
 	err = db.QueryRow("select id FROM users WHERE username=? AND password=?", login.Username, login.Password).Scan(&userid)
 	if err != nil {
@@ -815,6 +817,7 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 	csrfToken := r.Header.Get("X-CSRF-TOKEN")
 
 	db, _ := getDb()
+	defer db.Close()
 	var userid int
 	err := db.QueryRow("select id FROM users WHERE csrf=?", csrfToken).Scan(&userid)
 	if err != nil {
