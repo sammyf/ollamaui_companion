@@ -100,7 +100,7 @@ type PsModelDetail struct {
 type PsModel struct {
 	Name      string         `json:"name"`
 	Model     string         `json:"model"`
-	Size      int            `json:"size"`
+	Size      big.Int        `json:"size"`
 	Digest    string         `json:"digest"`
 	Details   *PsModelDetail `json:"details"`
 	ExpiresAt string         `json:"expires_at"`
