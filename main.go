@@ -159,7 +159,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a new request
-	req, err := http.NewRequest("GET", "http://searx.local?q="+query.Query+"&format=json", nil)
+	req, err := http.NewRequest("GET", "http://searx.local:8888?q="+query.Query+"&format=json", nil)
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)
 		return
