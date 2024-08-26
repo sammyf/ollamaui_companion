@@ -1144,7 +1144,7 @@ func main() {
 	http.HandleFunc("/async/retrieveDiscussion", retrieveDiscussionHandler)
 
 	http.HandleFunc("/async/search", searchHandler)
-	http.HandleFunc("/async/fetchurl", fetchHandler)
+	http.HandleFunc("/async/fetch", fetchHandler)
 
 	http.HandleFunc("/async/login", loginHandler)
 	http.HandleFunc("/async/loginByCsrf", loginByCsrfHandler)
