@@ -111,6 +111,10 @@ type PsModelsData struct {
 	Models []PsModel `json:"models"`
 }
 
+type Query struct {
+	Query string `json:"query"`
+}
+
 // var db *sql.DB
 
 type Payload struct {
@@ -124,6 +128,59 @@ func healthChkHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("still alive"))
 	return
+}
+
+/////////////////////////////////////////////////////////////
+// Handler for Ollama interactions
+/////////////////////////////////////////////////////////////
+
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var query Query
+	err = json.Unmarshal(body, &query)
+	if err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("GET", "http://searx.local?q="+query.Query+"&format=json", nil)
+	if err != nil {
+		fmt.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to make PS request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response from external service: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseBody)
 }
 
 /////////////////////////////////////////////////////////////
@@ -803,16 +860,6 @@ func loginByCsrfHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-var dsn string
-
-func init() {
-	var err error
-	dsn, err = buildDSN()
-	if err != nil {
-		log.Fatalf("Error building DSN: %v", err)
-	}
-}
-
 func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 	csrfToken := r.Header.Get("X-CSRF-TOKEN")
 
@@ -836,6 +883,19 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 		db.Close()
 	}
 	return userid, nil
+}
+
+// ///////////////////////////////////////////////////////////
+// Database and other internal tools
+// ///////////////////////////////////////////////////////////
+var dsn string
+
+func init() {
+	var err error
+	dsn, err = buildDSN()
+	if err != nil {
+		log.Fatalf("Error building DSN: %v", err)
+	}
 }
 
 func buildDSN() (string, error) {
