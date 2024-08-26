@@ -131,20 +131,20 @@ type SearxResult struct {
 }
 
 type SearxHits struct {
-	URL           string    `json:"url"`
-	Title         string    `json:"title"`
-	Content       string    `json:"content"`
-	Engine        string    `json:"engine"`
-	ParsedURL     []string  `json:"parsed_url"`
-	Template      string    `json:"template"`
-	Engines       []string  `json:"engines"`
-	Positions     []int     `json:"positions"`
-	PublishedDate time.Time `json:"publishedDate"`
-	IsOnion       bool      `json:"is_onion"`
-	Metadata      string    `json:"metadata,omitempty"`
-	Thumbnail     string    `json:"thumbnail"`
-	Score         float64   `json:"score"`
-	Category      string    `json:"category"`
+	URL           string   `json:"url"`
+	Title         string   `json:"title"`
+	Content       string   `json:"content"`
+	Engine        string   `json:"engine"`
+	ParsedURL     []string `json:"parsed_url"`
+	Template      string   `json:"template"`
+	Engines       []string `json:"engines"`
+	Positions     []int    `json:"positions"`
+	PublishedDate string   `json:"publishedDate"`
+	IsOnion       bool     `json:"is_onion"`
+	Metadata      string   `json:"metadata,omitempty"`
+	Thumbnail     string   `json:"thumbnail"`
+	Score         float64  `json:"score"`
+	Category      string   `json:"category"`
 }
 
 // Searx Results redux
@@ -156,13 +156,13 @@ type SearxResultRedux struct {
 }
 
 type SearxHitsRedux struct {
-	URL           string    `json:"url"`
-	Title         string    `json:"title"`
-	Content       string    `json:"content"`
-	Engine        string    `json:"engine"`
-	PublishedDate time.Time `json:"publishedDate"`
-	Score         float64   `json:"score"`
-	Category      string    `json:"category"`
+	URL           string  `json:"url"`
+	Title         string  `json:"title"`
+	Content       string  `json:"content"`
+	Engine        string  `json:"engine"`
+	PublishedDate string  `json:"publishedDate"`
+	Score         float64 `json:"score"`
+	Category      string  `json:"category"`
 }
 
 // var db *sql.DB
