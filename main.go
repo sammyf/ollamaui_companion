@@ -17,6 +17,7 @@ import (
 )
 
 const memoryThreshold = 5
+const MAX_SEARCH_HITS = 10
 
 type LLMRequest struct {
 	Model   string `json:"model"`
@@ -116,6 +117,54 @@ type Query struct {
 	Query string `json:"query"`
 }
 
+// /////////////////////
+// Searx Json
+type SearxResult struct {
+	Query               string        `json:"query"`
+	NumberOfResults     int           `json:"number_of_results"`
+	Results             []SearxHits   `json:"results"`
+	Answers             []interface{} `json:"answers"`
+	Corrections         []interface{} `json:"corrections"`
+	Infoboxes           []interface{} `json:"infoboxes"`
+	Suggestions         []string      `json:"suggestions"`
+	UnresponsiveEngines [][]string    `json:"unresponsive_engines"`
+}
+
+type SearxHits struct {
+	URL           string    `json:"url"`
+	Title         string    `json:"title"`
+	Content       string    `json:"content"`
+	Engine        string    `json:"engine"`
+	ParsedURL     []string  `json:"parsed_url"`
+	Template      string    `json:"template"`
+	Engines       []string  `json:"engines"`
+	Positions     []int     `json:"positions"`
+	PublishedDate time.Time `json:"publishedDate"`
+	IsOnion       bool      `json:"is_onion"`
+	Metadata      string    `json:"metadata,omitempty"`
+	Thumbnail     string    `json:"thumbnail"`
+	Score         float64   `json:"score"`
+	Category      string    `json:"category"`
+}
+
+// Searx Results redux
+type SearxResultRedux struct {
+	Results     []SearxHitsRedux `json:"results"`
+	Answers     []interface{}    `json:"answers"`
+	Corrections []interface{}    `json:"corrections"`
+	Suggestions []string         `json:"suggestions"`
+}
+
+type SearxHitsRedux struct {
+	URL           string    `json:"url"`
+	Title         string    `json:"title"`
+	Content       string    `json:"content"`
+	Engine        string    `json:"engine"`
+	PublishedDate time.Time `json:"publishedDate"`
+	Score         float64   `json:"score"`
+	Category      string    `json:"category"`
+}
+
 // var db *sql.DB
 
 type Payload struct {
@@ -161,7 +210,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create a new request
 	searchURL := fmt.Sprintf("http://searx.local:8888/search?q=%s&format=json", url.QueryEscape(query.Query))
-	fmt.Println(searchURL)
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)
@@ -182,6 +230,45 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Failed to read response from external service: %v", err)
 		return
 	}
+	var fullResults SearxResult
+
+	err = json.Unmarshal(responseBody, &fullResults)
+	if err != nil {
+		fmt.Printf("Failed to unmarshal response from external service: %v", err)
+		return
+	}
+
+	var searxHitsRedux []SearxHitsRedux
+	i := 0
+	for _, msg := range fullResults.Results {
+		searxHitsRedux = append(searxHitsRedux, SearxHitsRedux{
+			URL:           msg.URL,
+			Content:       msg.Content,
+			Title:         msg.Title,
+			Engine:        msg.Engine,
+			PublishedDate: msg.PublishedDate,
+			Score:         msg.Score,
+			Category:      msg.Category,
+		})
+		i++
+		if i >= MAX_SEARCH_HITS {
+			break
+		}
+	}
+
+	response := SearxResultRedux{
+		Results:     searxHitsRedux,
+		Answers:     fullResults.Answers,
+		Corrections: fullResults.Corrections,
+		Suggestions: fullResults.Suggestions,
+	}
+
+	responseBody, err = json.Marshal(response)
+	if err != nil {
+		fmt.Printf("Failed to marshal response: %v", err)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(responseBody)
 }
