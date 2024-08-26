@@ -900,7 +900,7 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 // Handler for external communication
 /////////////////////////////////////////////////////////////
 
-// ExtractTextWithLinks extracts the text from an HTML document while keeping <a href></a> links intact
+// ExtractTextWithLinks extracts the text from an HTML document while keeping <a href="..."></a> links intact
 func ExtractTextWithLinks(htmlSource string) (string, error) {
 	doc, err := html.Parse(strings.NewReader(htmlSource))
 	if err != nil {
@@ -909,11 +909,11 @@ func ExtractTextWithLinks(htmlSource string) (string, error) {
 
 	var buf bytes.Buffer
 	var processNode func(*html.Node)
+
 	processNode = func(n *html.Node) {
 		if n.Type == html.TextNode {
 			buf.WriteString(n.Data)
-		}
-		if n.Type == html.ElementNode && n.Data == "a" {
+		} else if n.Type == html.ElementNode && n.Data == "a" {
 			buf.WriteString(`<a href="`)
 			for _, attr := range n.Attr {
 				if attr.Key == "href" {
@@ -922,16 +922,14 @@ func ExtractTextWithLinks(htmlSource string) (string, error) {
 				}
 			}
 			buf.WriteString(`">`)
-
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				processNode(c)
 			}
 			buf.WriteString("</a>")
-			return
-		}
-
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			processNode(c)
+		} else if n.Type == html.ElementNode && (n.Data != "script" && n.Data != "style") {
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				processNode(c)
+			}
 		}
 	}
 
