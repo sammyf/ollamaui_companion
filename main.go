@@ -943,6 +943,7 @@ func main() {
 	http.HandleFunc("/async/chat", chatHandler)
 	http.HandleFunc("/", healthChkHandler)
 	http.HandleFunc("/async/response", responseHandler)
+	http.HandleFunc("/async/search", searchHandler)
 	http.HandleFunc("/async/ps", psHandler)
 	http.HandleFunc("/async/tags", tagsHandler)
 	http.HandleFunc("/async/unload", unloadHandler)
