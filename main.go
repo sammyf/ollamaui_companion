@@ -7,12 +7,14 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
+	"golang.org/x/net/html"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -173,104 +175,14 @@ type Payload struct {
 	// Message string `json:"message"`
 }
 
+/////////////////////////////////////////////////////////////
 // Handler for haproxy Healthcheck endpoint
+/////////////////////////////////////////////////////////////
+
 func healthChkHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("still alive"))
 	return
-}
-
-/////////////////////////////////////////////////////////////
-// Handler for Ollama interactions
-/////////////////////////////////////////////////////////////
-
-func searchHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-
-	var query Query
-	err = json.Unmarshal(body, &query)
-	if err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
-	}
-
-	// Create custom HTTP client with a 10-minute timeout
-	client := &http.Client{
-		Timeout: 10 * time.Minute,
-	}
-
-	// Create a new request
-	searchURL := fmt.Sprintf("http://searx.local:8888/search?q=%s&format=json", url.QueryEscape(query.Query))
-	req, err := http.NewRequest("GET", searchURL, nil)
-	if err != nil {
-		fmt.Printf("Failed to create new request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// Perform the request
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Failed to make PS request to external service: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Failed to read response from external service: %v", err)
-		return
-	}
-	var fullResults SearxResult
-
-	err = json.Unmarshal(responseBody, &fullResults)
-	if err != nil {
-		fmt.Printf("Failed to unmarshal response from external service: %v", err)
-		return
-	}
-
-	var searxHitsRedux []SearxHitsRedux
-	i := 0
-	for _, msg := range fullResults.Results {
-		searxHitsRedux = append(searxHitsRedux, SearxHitsRedux{
-			URL:           msg.URL,
-			Content:       msg.Content,
-			Title:         msg.Title,
-			Engine:        msg.Engine,
-			PublishedDate: msg.PublishedDate,
-			Score:         msg.Score,
-			Category:      msg.Category,
-		})
-		i++
-		if i >= MAX_SEARCH_HITS {
-			break
-		}
-	}
-
-	response := SearxResultRedux{
-		Results:     searxHitsRedux,
-		Answers:     fullResults.Answers,
-		Corrections: fullResults.Corrections,
-		Suggestions: fullResults.Suggestions,
-	}
-
-	responseBody, err = json.Marshal(response)
-	if err != nil {
-		fmt.Printf("Failed to marshal response: %v", err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(responseBody)
 }
 
 /////////////////////////////////////////////////////////////
@@ -975,6 +887,193 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 	return userid, nil
 }
 
+/////////////////////////////////////////////////////////////
+// Handler for external communication
+/////////////////////////////////////////////////////////////
+
+// ExtractTextWithLinks extracts the text from an HTML document while keeping <a href></a> links intact
+func ExtractTextWithLinks(htmlSource string) (string, error) {
+	doc, err := html.Parse(strings.NewReader(htmlSource))
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	var processNode func(*html.Node)
+	processNode = func(n *html.Node) {
+		if n.Type == html.TextNode {
+			buf.WriteString(n.Data)
+		}
+		if n.Type == html.ElementNode && n.Data == "a" {
+			buf.WriteString(`<a href="`)
+			for _, attr := range n.Attr {
+				if attr.Key == "href" {
+					buf.WriteString(attr.Val)
+					break
+				}
+			}
+			buf.WriteString(`">`)
+
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				processNode(c)
+			}
+			buf.WriteString("</a>")
+			return
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			processNode(c)
+		}
+	}
+
+	processNode(doc)
+	return buf.String(), nil
+}
+
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var query Query
+	err = json.Unmarshal(body, &query)
+	if err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	// Create a new request
+	searchURL := fmt.Sprintf("http://searx.local:8888/search?q=%s&format=json", url.QueryEscape(query.Query))
+	req, err := http.NewRequest("GET", searchURL, nil)
+	if err != nil {
+		fmt.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to make PS request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response from external service: %v", err)
+		return
+	}
+	var fullResults SearxResult
+
+	err = json.Unmarshal(responseBody, &fullResults)
+	if err != nil {
+		fmt.Printf("Failed to unmarshal response from external service: %v", err)
+		return
+	}
+
+	var searxHitsRedux []SearxHitsRedux
+	i := 0
+	for _, msg := range fullResults.Results {
+		searxHitsRedux = append(searxHitsRedux, SearxHitsRedux{
+			URL:           msg.URL,
+			Content:       msg.Content,
+			Title:         msg.Title,
+			Engine:        msg.Engine,
+			PublishedDate: msg.PublishedDate,
+			Score:         msg.Score,
+			Category:      msg.Category,
+		})
+		i++
+		if i >= MAX_SEARCH_HITS {
+			break
+		}
+	}
+
+	response := SearxResultRedux{
+		Results:     searxHitsRedux,
+		Answers:     fullResults.Answers,
+		Corrections: fullResults.Corrections,
+		Suggestions: fullResults.Suggestions,
+	}
+
+	responseBody, err = json.Marshal(response)
+	if err != nil {
+		fmt.Printf("Failed to marshal response: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseBody)
+}
+
+func fetchHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var fetchUrl Query
+	err = json.Unmarshal(body, &fetchUrl)
+	if err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 100 * time.Second,
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("GET", fetchUrl.Query, nil)
+	if err != nil {
+		fmt.Printf("Failed to create new request: %v", err)
+		return
+	}
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to make PS request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response from external service: %v", err)
+		return
+	}
+
+	parsedResponse, err := ExtractTextWithLinks(string(responseBody))
+	if err != nil {
+		fmt.Printf("Failed to parse HTML response: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/text")
+	w.Write([]byte(parsedResponse))
+}
+
 // ///////////////////////////////////////////////////////////
 // Database and other internal tools
 // ///////////////////////////////////////////////////////////
@@ -1030,17 +1129,23 @@ func getDb() (*sql.DB, error) {
 
 func main() {
 	fmt.Println("Listening on port 32225")
-	http.HandleFunc("/async/chat", chatHandler)
 	http.HandleFunc("/", healthChkHandler)
+
+	http.HandleFunc("/async/chat", chatHandler)
 	http.HandleFunc("/async/response", responseHandler)
-	http.HandleFunc("/async/search", searchHandler)
+
 	http.HandleFunc("/async/ps", psHandler)
 	http.HandleFunc("/async/tags", tagsHandler)
 	http.HandleFunc("/async/unload", unloadHandler)
+
 	http.HandleFunc("/async/storeChatLog", storeChatLogHandler)
 	http.HandleFunc("/async/getChatLog", getChatLogHandler)
 	http.HandleFunc("/async/generateMemories", generateMemoriesHandler)
 	http.HandleFunc("/async/retrieveDiscussion", retrieveDiscussionHandler)
+
+	http.HandleFunc("/async/search", searchHandler)
+	http.HandleFunc("/async/fetchurl", fetchHandler)
+
 	http.HandleFunc("/async/login", loginHandler)
 	http.HandleFunc("/async/loginByCsrf", loginByCsrfHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
