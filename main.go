@@ -119,6 +119,10 @@ type Query struct {
 	Query string `json:"query"`
 }
 
+type FetchUrl struct {
+	Url string `json:"url"`
+}
+
 // /////////////////////
 // Searx Json
 type SearxResult struct {
@@ -1031,20 +1035,20 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var fetchUrl Query
+	var fetchUrl FetchUrl
 	err = json.Unmarshal(body, &fetchUrl)
 	if err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
 
-	// Create custom HTTP client with a 10-minute timeout
+	// Create custom HTTP client with a 100 Second timeout (to avoid cloudflare timeouts)
 	client := &http.Client{
 		Timeout: 100 * time.Second,
 	}
 
 	// Create a new request
-	req, err := http.NewRequest("GET", fetchUrl.Query, nil)
+	req, err := http.NewRequest("GET", fetchUrl.Url, nil)
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)
 		return
