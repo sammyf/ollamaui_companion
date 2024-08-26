@@ -123,6 +123,11 @@ type FetchUrl struct {
 	Url string `json:"url"`
 }
 
+type UrlResponse struct {
+	Content    string `json:"content"`
+	ReturnCode int    `json:"returnCode"`
+}
+
 // /////////////////////
 // Searx Json
 type SearxResult struct {
@@ -1024,6 +1029,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func fetchHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("IN FetchHandler")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
@@ -1035,20 +1041,27 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var fetchUrl FetchUrl
-	err = json.Unmarshal(body, &fetchUrl)
+	var payload FetchUrl
+	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
+	fetchUrl := payload.Url
 
+	fetchUrl = strings.ReplaceAll(fetchUrl, "'", "")
+	fetchUrl = strings.ReplaceAll(fetchUrl, "`", "")
+	fetchUrl = strings.ReplaceAll(fetchUrl, "\"", "")
+	fetchUrl = strings.ReplaceAll(fetchUrl, "'", "")
+
+	fmt.Printf("fetchUrl: %s\n", fetchUrl)
 	// Create custom HTTP client with a 100 Second timeout (to avoid cloudflare timeouts)
 	client := &http.Client{
 		Timeout: 100 * time.Second,
 	}
 
 	// Create a new request
-	req, err := http.NewRequest("GET", fetchUrl.Url, nil)
+	req, err := http.NewRequest("GET", fetchUrl, nil)
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)
 		return
@@ -1057,7 +1070,7 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Failed to make PS request to external service: %v", err)
+		fmt.Printf("Failed to make request to external URL: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -1074,8 +1087,14 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/text")
-	w.Write([]byte(parsedResponse))
+	response, err := json.Marshal(UrlResponse{Content: parsedResponse, ReturnCode: 200})
+	if err != nil {
+		fmt.Printf("Failed to marshal response: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(response)
 }
 
 // ///////////////////////////////////////////////////////////
@@ -1133,7 +1152,6 @@ func getDb() (*sql.DB, error) {
 
 func main() {
 	fmt.Println("Listening on port 32225")
-	http.HandleFunc("/", healthChkHandler)
 
 	http.HandleFunc("/async/chat", chatHandler)
 	http.HandleFunc("/async/response", responseHandler)
@@ -1152,5 +1170,6 @@ func main() {
 
 	http.HandleFunc("/async/login", loginHandler)
 	http.HandleFunc("/async/loginByCsrf", loginByCsrfHandler)
+	http.HandleFunc("/", healthChkHandler)
 	log.Fatal(http.ListenAndServe("0.0.0.0:32225", nil))
 }
