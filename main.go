@@ -1029,14 +1029,18 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func fetchHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("IN FetchHandler")
+	w.Header().Set("Content-Type", "application/json")
+
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		msg, _ := json.Marshal(UrlResponse{Content: "Only POST method is allowed", ReturnCode: http.StatusMethodNotAllowed})
+		w.Write(msg)
 		return
 	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		msg, _ := json.Marshal(UrlResponse{Content: "Failed to read request body", ReturnCode: http.StatusInternalServerError})
+		w.Write(msg)
 		return
 	}
 	defer r.Body.Close()
@@ -1044,7 +1048,8 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 	var payload FetchUrl
 	err = json.Unmarshal(body, &payload)
 	if err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		msg, _ := json.Marshal(UrlResponse{Content: "Invalid JSON payload", ReturnCode: http.StatusBadRequest})
+		w.Write(msg)
 		return
 	}
 	fetchUrl := payload.Url
@@ -1063,37 +1068,41 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 	// Create a new request
 	req, err := http.NewRequest("GET", fetchUrl, nil)
 	if err != nil {
-		fmt.Printf("Failed to create new request: %v", err)
+		msg, _ := json.Marshal(UrlResponse{Content: "Failed to create new request", ReturnCode: http.StatusInternalServerError})
+		w.Write(msg)
 		return
 	}
 
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Failed to make request to external URL: %v", err)
+		msg, _ := json.Marshal(UrlResponse{Content: "Failed to make request to external URL", ReturnCode: http.StatusInternalServerError})
+		w.Write(msg)
 		return
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("Failed to read response from external service: %v", err)
+		msg, _ := json.Marshal(UrlResponse{Content: "Failed to read response from external service", ReturnCode: http.StatusInternalServerError})
+		w.Write(msg)
 		return
 	}
 
 	parsedResponse, err := ExtractTextWithLinks(string(responseBody))
 	if err != nil {
-		fmt.Printf("Failed to parse HTML response: %v", err)
+		msg, _ := json.Marshal(UrlResponse{Content: "Failed to parse HTML response", ReturnCode: http.StatusInternalServerError})
+		w.Write(msg)
 		return
 	}
 
 	response, err := json.Marshal(UrlResponse{Content: parsedResponse, ReturnCode: 200})
 	if err != nil {
-		fmt.Printf("Failed to marshal response: %v", err)
+		msg, _ := json.Marshal(UrlResponse{Content: "Failed to marshal response", ReturnCode: http.StatusInternalServerError})
+		w.Write(msg)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.Write(response)
 }
 
