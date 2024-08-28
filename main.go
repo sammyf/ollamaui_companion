@@ -907,45 +907,38 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 // Handler for external communication
 /////////////////////////////////////////////////////////////
 
-func removeTags(n *html.Node) {
-	if n.Type == html.ElementNode {
-		fmt.Println("node", n.Data)
-		switch n.Data {
-		case "a":
-			break
-		case "script":
-		case "link":
-		case "head":
-			n.FirstChild = nil
-			break
-		default:
-			n.Type = html.TextNode
-			n.Data = ""
-			for c := n.FirstChild; c != nil; {
-				next := c.NextSibling
-				n.RemoveChild(c)
-				n.Parent.InsertBefore(c, n)
-				c = next
-			}
-		}
+func removeTagsExceptA(htmlSource string) (string, error) {
+	doc, err := html.Parse(bytes.NewReader([]byte(htmlSource)))
+	if err != nil {
+		return "", err
 	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		removeTags(c)
+
+	var buf bytes.Buffer
+	err = traverse(doc, &buf)
+	if err != nil {
+		return "", err
 	}
+
+	return buf.String(), nil
 }
 
-func stripHTML(htmlString string) (string, error) {
-	doc, err := html.Parse(strings.NewReader(htmlString))
-	if err != nil {
-		return "", err
+func traverse(n *html.Node, w io.Writer) error {
+	if n.Type == html.TextNode {
+		if _, err := w.Write([]byte(n.Data)); err != nil {
+			return err
+		}
+	} else if n.Type == html.ElementNode && n.Data == "a" {
+		if err := html.Render(w, n); err != nil {
+			return err
+		}
 	}
-	removeTags(doc)
-	var buf strings.Builder
-	err = html.Render(&buf, doc)
-	if err != nil {
-		return "", err
+
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if err := traverse(c, w); err != nil {
+			return err
+		}
 	}
-	return buf.String(), nil
+	return nil
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -1098,7 +1091,7 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedResponse, err := stripHTML(string(responseBody))
+	parsedResponse, err := removeTagsExceptA(string(responseBody))
 	if err != nil {
 		msg, _ := json.Marshal(UrlResponse{Content: "Failed to parse HTML response", ReturnCode: http.StatusInternalServerError})
 		w.Write(msg)
