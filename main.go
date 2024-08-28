@@ -1101,6 +1101,10 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Printf("\n\n________________________________________________________\n\n")
+	fmt.Println(responseBody)
+	fmt.Printf("\n\n________________________________________________________\n\n")
+
 	w.Write(response)
 }
 
