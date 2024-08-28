@@ -224,7 +224,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	db, _ := getDb()
 	defer db.Close()
 
-	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body))
+	_, err = db.Exec("INSERT INTO async (uuid, prompt, answer) VALUES (?, ?, 'still processing')", uniqueID, string(body)[:50])
 	if err != nil {
 		fmt.Printf("Failed to insert data into MariaDB database: %v", err)
 	}
