@@ -909,6 +909,7 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 
 func removeTags(n *html.Node) {
 	if n.Type == html.ElementNode {
+		fmt.Println("node", n.Data)
 		switch n.Data {
 		case "a":
 			break
