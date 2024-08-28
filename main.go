@@ -919,8 +919,11 @@ func removeTags(n *html.Node) {
 		default:
 			n.Type = html.TextNode
 			n.Data = ""
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
+			for c := n.FirstChild; c != nil; {
+				next := c.NextSibling
+				n.RemoveChild(c)
 				n.Parent.InsertBefore(c, n)
+				c = next
 			}
 		}
 	}
