@@ -1094,16 +1094,18 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := json.Marshal(UrlResponse{Content: parsedResponse, ReturnCode: 200})
+	fmt.Printf("\n\n________________________________________________________\n\n")
+	fmt.Println(parsedResponse)
+	fmt.Printf("\n\n________________________________________________________\n\n")
+
+	urlResponse := UrlResponse{Content: parsedResponse, ReturnCode: 200}
+
+	response, err := json.Marshal(urlResponse)
 	if err != nil {
 		msg, _ := json.Marshal(UrlResponse{Content: "Failed to marshal response", ReturnCode: http.StatusInternalServerError})
 		w.Write(msg)
 		return
 	}
-
-	fmt.Printf("\n\n________________________________________________________\n\n")
-	fmt.Println(responseBody)
-	fmt.Printf("\n\n________________________________________________________\n\n")
 
 	w.Write(response)
 }
