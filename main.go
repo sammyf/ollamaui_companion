@@ -359,8 +359,7 @@ func tagsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(responseBody)
 }
 
-func psHandler(w http.ResponseWriter, r *http.Request) {
-
+func getCurrentModelList() PsModelsData {
 	// Create custom HTTP client with a 10-minute timeout
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
@@ -370,7 +369,7 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/ps", nil)
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)
-		w.Write([]byte(`"none"`))
+		return PsModelsData{}
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -378,14 +377,14 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Failed to make PS request to external service: %v", err)
-		w.Write([]byte(`"none"`))
+		return PsModelsData{}
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Failed to read response from external service: %v", err)
-		w.Write([]byte(`"none"`))
+		return PsModelsData{}
 	}
 
 	fmt.Printf(string(responseBody))
@@ -393,8 +392,14 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(responseBody, &currentModelList)
 	if err != nil {
 		fmt.Printf("Failed to unmarshal model list response: %v", err)
-		w.Write([]byte(`"none"`))
+		return PsModelsData{}
 	}
+	return currentModelList
+}
+
+func psHandler(w http.ResponseWriter, r *http.Request) {
+
+	currentModelList := getCurrentModelList()
 
 	summarizer := os.Getenv("SUMMARIZER")
 	foundAlternative := false
@@ -617,8 +622,13 @@ func generateChatSegment(uid int) (int, int, string) {
 
 func generateSummary(uid int) {
 	firstId, lastId, chatSection := generateChatSegment(uid)
+	currentModels := getCurrentModelList()
+	summarizer := os.Getenv("SUMMARIZER")
+	if len(currentModels.Models) > 0 {
+		summarizer = currentModels.Models[0].Name
+	}
 	llmRequest := LLMRequest{
-		Model:  os.Getenv("SUMMARIZER"),
+		Model:  summarizer,
 		Prompt: chatSection + "\nWrite a summary of the discussion written above.",
 		Options: struct {
 			Temperature float64 `json:"temperature"`
