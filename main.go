@@ -7,7 +7,6 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
-	"golang.org/x/net/html"
 	"io"
 	"log"
 	"math/big"
@@ -908,37 +907,7 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 /////////////////////////////////////////////////////////////
 
 func removeTagsExceptA(htmlSource string) (string, error) {
-	doc, err := html.Parse(bytes.NewReader([]byte(htmlSource)))
-	if err != nil {
-		return "", err
-	}
-
-	var buf bytes.Buffer
-	err = traverse(doc, &buf)
-	if err != nil {
-		return "", err
-	}
-
-	return buf.String(), nil
-}
-
-func traverse(n *html.Node, w io.Writer) error {
-	if n.Type == html.TextNode {
-		if _, err := w.Write([]byte(n.Data)); err != nil {
-			return err
-		}
-	} else if n.Type == html.ElementNode && n.Data == "a" {
-		if err := html.Render(w, n); err != nil {
-			return err
-		}
-	}
-
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if err := traverse(c, w); err != nil {
-			return err
-		}
-	}
-	return nil
+	return "broken", nil
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -1097,10 +1066,6 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write(msg)
 		return
 	}
-
-	fmt.Printf("\n\n________________________________________________________\n\n")
-	fmt.Println(parsedResponse)
-	fmt.Printf("\n\n________________________________________________________\n\n")
 
 	urlResponse := UrlResponse{Content: parsedResponse, ReturnCode: 200}
 
