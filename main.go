@@ -900,40 +900,26 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 // Handler for external communication
 /////////////////////////////////////////////////////////////
 
-// ExtractTextWithLinks extracts the text from an HTML document while keeping <a href="..."></a> links intact
-func ExtractTextWithLinks(htmlSource string) (string, error) {
-	doc, err := html.Parse(strings.NewReader(htmlSource))
+func removeTags(n *html.Node) {
+	if n.Type == html.ElementNode && n.Data != "a" {
+		n.FirstChild = nil
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		removeTags(c)
+	}
+}
+
+func stripHTML(htmlString string) (string, error) {
+	doc, err := html.Parse(strings.NewReader(htmlString))
 	if err != nil {
 		return "", err
 	}
-
-	var buf bytes.Buffer
-	var processNode func(*html.Node)
-
-	processNode = func(n *html.Node) {
-		if n.Type == html.TextNode {
-			buf.WriteString(n.Data)
-		} else if n.Type == html.ElementNode && n.Data == "a" {
-			buf.WriteString(`<a href="`)
-			for _, attr := range n.Attr {
-				if attr.Key == "href" {
-					buf.WriteString(attr.Val)
-					break
-				}
-			}
-			buf.WriteString(`">`)
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
-				processNode(c)
-			}
-			buf.WriteString("</a>")
-		} else if n.Type == html.ElementNode && (n.Data != "script" && n.Data != "style") {
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
-				processNode(c)
-			}
-		}
+	removeTags(doc)
+	var buf strings.Builder
+	err = html.Render(&buf, doc)
+	if err != nil {
+		return "", err
 	}
-
-	processNode(doc)
 	return buf.String(), nil
 }
 
@@ -1087,7 +1073,7 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedResponse, err := ExtractTextWithLinks(string(responseBody))
+	parsedResponse, err := stripHTML(string(responseBody))
 	if err != nil {
 		msg, _ := json.Marshal(UrlResponse{Content: "Failed to parse HTML response", ReturnCode: http.StatusInternalServerError})
 		w.Write(msg)
