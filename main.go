@@ -608,6 +608,7 @@ func generateChatSegment(uid int) (int, int, string) {
 	}
 
 	if startProcessingIn > 0 {
+		fmt.Println("No memories to generate!")
 		return -1, -1, ""
 	}
 
