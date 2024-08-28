@@ -584,7 +584,8 @@ func generateChatSegment(uid int) (int, int, string) {
 		if role == "system" {
 			continue
 		}
-		startProcessingIn = startProcessingIn - 1
+		startProcessingIn--
+		fmt.Println("starting to generate Memories in ", startProcessingIn)
 		if startProcessingIn > 0 {
 			continue
 		}
