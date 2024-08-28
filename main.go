@@ -907,8 +907,22 @@ func getUserId(w http.ResponseWriter, r *http.Request) (int, error) {
 /////////////////////////////////////////////////////////////
 
 func removeTags(n *html.Node) {
-	if n.Type == html.ElementNode && n.Data != "a" {
-		n.FirstChild = nil
+	if n.Type == html.ElementNode {
+		switch n.Data {
+		case "a":
+			break
+		case "script":
+		case "link":
+		case "head":
+			n.FirstChild = nil
+			break
+		default:
+			n.Type = html.TextNode
+			n.Data = ""
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				n.Parent.InsertBefore(c, n)
+			}
+		}
 	}
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		removeTags(c)
