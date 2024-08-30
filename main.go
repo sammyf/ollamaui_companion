@@ -563,7 +563,7 @@ func generateChatSegment(uid int, username string, initialId int) (int, int, str
 		return -1, -1, "", false
 	}
 
-	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? AND id > ? ORDER BY id DESC"
+	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? AND id > ? ORDER BY id"
 	rows, err := db.Query(query, uid, initialId)
 	if err != nil {
 		fmt.Printf("Failed to execute query: %v", err)
@@ -576,7 +576,6 @@ func generateChatSegment(uid int, username string, initialId int) (int, int, str
 	var firstID, lastID int
 	var id int
 	var persona, role, content string
-	startProcessingIn := memoryThreshold
 
 	for rows.Next() {
 		err := rows.Scan(&id, &persona, &role, &content)
@@ -588,11 +587,6 @@ func generateChatSegment(uid int, username string, initialId int) (int, int, str
 		fmt.Println("Next Memory : ", id)
 
 		if role == "system" {
-			continue
-		}
-		startProcessingIn--
-		if startProcessingIn > 0 {
-			fmt.Println("starting to generate Memories in ", startProcessingIn)
 			continue
 		}
 		if role == "user" {
@@ -612,7 +606,7 @@ func generateChatSegment(uid int, username string, initialId int) (int, int, str
 		}
 	}
 
-	if startProcessingIn > 0 {
+	if count <= memoryThreshold {
 		fmt.Println("+++++++++     No memories to generate!     +++++++++")
 		return -1, -1, "", false
 	}
