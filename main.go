@@ -721,17 +721,18 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 	fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
 	if os.Getenv("DEBUG") != "1" {
 		db, _ := getDb()
-		defer db.Close()
 		fmt.Println("Commiting memory to DB.")
 		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
 		if err != nil {
 			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
+
 		fmt.Printf("Updating chat_log entries %i to %i.\n", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
 		_, err = db.Exec("UPDATE chat_log SET is_summarized=1 WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
 		if err != nil {
 			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
+		_ = db.Close()
 	}
 	fmt.Println("Done with query", requestDetails.Request_id)
 }
