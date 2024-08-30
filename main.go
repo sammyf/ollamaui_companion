@@ -585,6 +585,8 @@ func generateChatSegment(uid int) (int, int, string) {
 			return -1, -1, ""
 		}
 
+		fmt.Println("Next Memory : ", id)
+
 		if role == "system" {
 			continue
 		}
@@ -613,7 +615,7 @@ func generateChatSegment(uid int) (int, int, string) {
 	}
 
 	if startProcessingIn > 0 {
-		fmt.Println("No memories to generate!")
+		fmt.Println("\n\n-------------------\nNo memories to generate!\n-----------------\n\n")
 		return -1, -1, ""
 	}
 
