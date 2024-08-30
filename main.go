@@ -554,7 +554,7 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonRes)
 }
 
-func generateChatSegment(uid int) (int, int, string, bool) {
+func generateChatSegment(uid int, initialId int) (int, int, string, bool) {
 	db, err := getDb()
 	defer db.Close()
 	if err != nil {
@@ -569,8 +569,8 @@ func generateChatSegment(uid int) (int, int, string, bool) {
 		return -1, -1, "", false
 	}
 
-	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? ORDER BY id DESC"
-	rows, err := db.Query(query, uid)
+	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? AND id > ? ORDER BY id DESC"
+	rows, err := db.Query(query, uid, initialId)
 	if err != nil {
 		fmt.Printf("Failed to execute query: %v", err)
 		return -1, -1, "", false
@@ -628,8 +628,9 @@ func generateChatSegment(uid int) (int, int, string, bool) {
 
 func generateSummary(uid int) {
 	doSummary := true
+	firstId := -1
 	for doSummary {
-		firstId, lastId, chatSection, generateSuccess := generateChatSegment(uid)
+		firstId, lastId, chatSection, generateSuccess := generateChatSegment(uid, firstId)
 		if !generateSuccess {
 			break
 		}
