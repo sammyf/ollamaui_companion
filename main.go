@@ -17,7 +17,13 @@ import (
 	"time"
 )
 
+// amount of unsummarized chat logs to keep
 const memoryThreshold = 5
+
+// amount of chat logs to collect before returning to the summarizer
+const SUMMARY_THRESHOLD = 10
+
+// amount of search hits to retain
 const MAX_SEARCH_HITS = 10
 
 type LLMRequest struct {
@@ -548,26 +554,26 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonRes)
 }
 
-func generateChatSegment(uid int) (int, int, string) {
+func generateChatSegment(uid int) (int, int, string, bool) {
 	db, err := getDb()
 	defer db.Close()
 	if err != nil {
 		fmt.Printf("Failed to open database: %v", err)
-		return -1, -1, ""
+		return -1, -1, "", false
 	}
 
 	var username string
 	err = db.QueryRow("SELECT username FROM users WHERE id = ?", uid).Scan(&username)
 	if err != nil {
 		fmt.Printf("Failed to execute query: %v", err)
-		return -1, -1, ""
+		return -1, -1, "", false
 	}
 
 	query := "SELECT id, persona, role, content FROM chat_log WHERE is_summarized = false AND user_id = ? ORDER BY id DESC"
 	rows, err := db.Query(query, uid)
 	if err != nil {
 		fmt.Printf("Failed to execute query: %v", err)
-		return -1, -1, ""
+		return -1, -1, "", false
 	}
 	defer rows.Close()
 
@@ -582,7 +588,7 @@ func generateChatSegment(uid int) (int, int, string) {
 		err := rows.Scan(&id, &persona, &role, &content)
 		if err != nil {
 			fmt.Printf("Failed to execute query (2): %v", err)
-			return -1, -1, ""
+			return -1, -1, "", false
 		}
 
 		fmt.Println("Next Memory : ", id)
@@ -607,44 +613,55 @@ func generateChatSegment(uid int) (int, int, string) {
 		if count == 0 {
 			firstID = id
 		}
+		if count == SUMMARY_THRESHOLD {
+			break
+		}
 	}
 
 	if startProcessingIn > 0 {
-		fmt.Println("\n\n-------------------\nNo memories to generate!\n-----------------\n\n")
-		return -1, -1, ""
+		fmt.Println("+++++++++     No memories to generate!     +++++++++")
+		return -1, -1, "", false
 	}
 
-	return firstID, lastID, segment
+	return firstID, lastID, segment, true
 }
 
 func generateSummary(uid int) {
-	firstId, lastId, chatSection := generateChatSegment(uid)
-	currentModels := getCurrentModelList()
-	summarizer := os.Getenv("SUMMARIZER")
-	if len(currentModels.Models) > 0 {
-		summarizer = currentModels.Models[0].Name
+	doSummary := true
+	for doSummary {
+		firstId, lastId, chatSection, generateSuccess := generateChatSegment(uid)
+		if !generateSuccess {
+			break
+		}
+
+		currentModels := getCurrentModelList()
+		summarizer := os.Getenv("SUMMARIZER")
+		if len(currentModels.Models) > 0 {
+			summarizer = currentModels.Models[0].Name
+		}
+
+		llmRequest := LLMRequest{
+			Model:  summarizer,
+			Prompt: chatSection + "\nWrite a summary of the discussion written above.",
+		}
+		llmRequest.Options.Temperature = 1.0
+
+		options := memoryRequestStruct{
+			User_id:           uid,
+			First_chat_log_id: firstId,
+			Last_chat_log_id:  lastId,
+		}
+
+		body, err := json.Marshal(llmRequest)
+		if err != nil {
+			fmt.Printf("Failed to generate summary: %v\n", err)
+			doSummary = false
+			break
+		}
+
+		go asyncSummaryRequest(options, body)
 	}
-	llmRequest := LLMRequest{
-		Model:  summarizer,
-		Prompt: chatSection + "\nWrite a summary of the discussion written above.",
-		Options: struct {
-			Temperature float64 `json:"temperature"`
-		}{
-			Temperature: 1.0,
-		},
-		Stream: false,
-	}
-	options := memoryRequestStruct{
-		User_id:           uid,
-		First_chat_log_id: firstId,
-		Last_chat_log_id:  lastId,
-	}
-	body, err := json.Marshal(llmRequest)
-	if err != nil {
-		fmt.Printf("Failed to generate summary: %v", err)
-		return
-	}
-	go asyncSummaryRequest(options, body)
+	return
 }
 
 func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
