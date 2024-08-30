@@ -591,8 +591,8 @@ func generateChatSegment(uid int) (int, int, string) {
 			continue
 		}
 		startProcessingIn--
-		fmt.Println("starting to generate Memories in ", startProcessingIn)
 		if startProcessingIn > 0 {
+			fmt.Println("starting to generate Memories in ", startProcessingIn)
 			continue
 		}
 		if role == "user" {
@@ -607,11 +607,6 @@ func generateChatSegment(uid int) (int, int, string) {
 		if count == 0 {
 			firstID = id
 		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return -1, -1, ""
 	}
 
 	if startProcessingIn > 0 {
