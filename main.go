@@ -92,6 +92,7 @@ type LoginResult struct {
 }
 
 type memoryRequestStruct struct {
+	Request_id        int `json:"request_id"`
 	User_id           int `json:"user_id"`
 	First_chat_log_id int `json:"first_chat_log_id"`
 	Last_chat_log_id  int `json:"last_chat_log_id"`
@@ -635,6 +636,8 @@ func generateSummary(uid int) {
 	}
 	defer db.Close()
 
+	cnt := 1
+
 	for doSummary {
 		firstId, lastId, chatSection, generateSuccess := generateChatSegment(uid, username, initialId)
 		if !generateSuccess {
@@ -654,11 +657,12 @@ func generateSummary(uid int) {
 		llmRequest.Options.Temperature = 1.0
 
 		options := memoryRequestStruct{
+			Request_id:        cnt,
 			User_id:           uid,
 			First_chat_log_id: firstId,
 			Last_chat_log_id:  lastId,
 		}
-
+		cnt++
 		body, err := json.Marshal(llmRequest)
 		if err != nil {
 			fmt.Printf("Failed to generate summary: %v\n", err)
@@ -684,7 +688,7 @@ func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
 
 // Perform asynchronous summary request and store it as memory in the database
 func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte) {
-
+	fmt.Println("Memory Request : ", requestDetails.Request_id)
 	summary, err := callGenerateOnSummarizer(requestBody)
 	if err != nil {
 		fmt.Printf("Failed to generate summary: %v", err)
@@ -718,12 +722,18 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 	if os.Getenv("DEBUG") != "1" {
 		db, _ := getDb()
 		defer db.Close()
+		fmt.Println("Commiting memory to DB.")
 		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
-		_, err = db.Exec("UPDATE chat_log SET is_summarized=true WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
+		if err != nil {
+			fmt.Printf("Failed to insert data into SQLite database: %v", err)
+		}
+		fmt.Printf("Updating chat_log entries %i to %i.\n", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
+		_, err = db.Exec("UPDATE chat_log SET is_summarized=1 WHERE id>=? AND id <=?", requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id)
 		if err != nil {
 			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
 	}
+	fmt.Println("Done with query", requestDetails.Request_id)
 }
 
 func callGenerateOnSummarizer(requestBody []byte) (string, error) {
