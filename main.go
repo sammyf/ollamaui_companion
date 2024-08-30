@@ -554,18 +554,11 @@ func getChatLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonRes)
 }
 
-func generateChatSegment(uid int, initialId int) (int, int, string, bool) {
+func generateChatSegment(uid int, username string, initialId int) (int, int, string, bool) {
 	db, err := getDb()
 	defer db.Close()
 	if err != nil {
 		fmt.Printf("Failed to open database: %v", err)
-		return -1, -1, "", false
-	}
-
-	var username string
-	err = db.QueryRow("SELECT username FROM users WHERE id = ?", uid).Scan(&username)
-	if err != nil {
-		fmt.Printf("Failed to execute query: %v", err)
 		return -1, -1, "", false
 	}
 
@@ -628,13 +621,26 @@ func generateChatSegment(uid int, initialId int) (int, int, string, bool) {
 
 func generateSummary(uid int) {
 	doSummary := true
-	firstId := -1
+	initialId := -1
+	db, err := getDb()
+	if err != nil {
+		fmt.Printf("Failed to open database: %v", err)
+		return
+	}
+	var username string
+	err = db.QueryRow("SELECT username FROM users WHERE id = ?", uid).Scan(&username)
+	if err != nil {
+		fmt.Printf("Failed to execute query: %v", err)
+		return
+	}
+	defer db.Close()
+
 	for doSummary {
-		firstId, lastId, chatSection, generateSuccess := generateChatSegment(uid, firstId)
+		firstId, lastId, chatSection, generateSuccess := generateChatSegment(uid, username, initialId)
 		if !generateSuccess {
 			break
 		}
-
+		initialId = lastId
 		currentModels := getCurrentModelList()
 		summarizer := os.Getenv("SUMMARIZER")
 		if len(currentModels.Models) > 0 {
