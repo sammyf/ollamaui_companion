@@ -17,9 +17,6 @@ import (
 	"time"
 )
 
-// amount of unsummarized chat logs to keep
-const memoryThreshold = 5
-
 // amount of chat logs to collect before returning to the summarizer
 const SUMMARY_THRESHOLD = 10
 
@@ -67,10 +64,13 @@ type LLMGenerateAnswer struct {
 
 // Messages
 type Messages struct {
-	Id      int    `json:"id"`
-	Role    string `json:"role"`
-	Content string `json:"content"`
-	Persona string `json:"persona"`
+	Id       int    `json:"id"`
+	Role     string `json:"role"`
+	Content  string `json:"content"`
+	Persona  string `json:"persona"`
+	IsMemory bool   `json:"is_memory"`
+	FirstId  int    `json:"first_id"`
+	LastId   int    `json:"last_id"`
 }
 
 type MessagesExtended struct {
@@ -79,6 +79,9 @@ type MessagesExtended struct {
 	Content  string    `json:"content"`
 	Persona  string    `json:"persona"`
 	Datetime time.Time `json:"datetime"`
+	IsMemory bool      `json:"is_memory"`
+	FirstId  int       `json:"first_id"`
+	LastId   int       `json:"last_id"`
 }
 
 type Login struct {
@@ -132,6 +135,11 @@ type FetchUrl struct {
 type UrlResponse struct {
 	Content    string `json:"content"`
 	ReturnCode int    `json:"returnCode"`
+}
+
+type DetailRequest struct {
+	FirstId int `json:"first_id"`
+	LastId  int `json:"last_id"`
 }
 
 // /////////////////////
@@ -606,8 +614,9 @@ func generateChatSegment(uid int, username string, initialId int) (int, int, str
 		}
 	}
 
-	if count <= memoryThreshold {
-		fmt.Println("+++++++++     No memories to generate!     +++++++++")
+	if count < 0 {
+		fmt.Println("+++++++++     No more memories to generate!     +++++++++")
+		fmt.Println("+++++++++    processing Async Generation ...     +++++++++")
 		return -1, -1, "", false
 	}
 
@@ -781,7 +790,7 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 	db, _ := getDb()
 	defer db.Close()
 
-	summaryRows, err := db.Query("SELECT m.id, 'system' AS persona, 'user' AS role, m.content, cl.datetime FROM memories AS m, chat_log AS cl WHERE m.user_id=? AND cl.id = m.last_chat_log_id ORDER BY last_chat_log_id DESC LIMIT 10", uid)
+	summaryRows, err := db.Query("SELECT m.id, 'system' AS persona, 'user' AS role, m.content, cl.datetime, m.first_chat_log_id, m.last_chat_log_id FROM memories AS m, chat_log AS cl WHERE m.user_id=? AND cl.id = m.last_chat_log_id ORDER BY first_chat_log_id DESC LIMIT 10", uid)
 	if err != nil {
 		fmt.Printf("Failed to get latest 10 memories from memories: %v", err)
 	}
@@ -792,7 +801,7 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 
 	for summaryRows.Next() {
 		var msgExt MessagesExtended
-		err = summaryRows.Scan(&msgExt.Id, &msgExt.Persona, &msgExt.Role, &msgExt.Content, &msgExt.Datetime)
+		err = summaryRows.Scan(&msgExt.Id, &msgExt.Persona, &msgExt.Role, &msgExt.Content, &msgExt.Datetime, &msgExt.FirstId, &msgExt.LastId)
 		if err != nil {
 			http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
 			return
@@ -800,10 +809,10 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 		if msgExt.Datetime.After(latestDatetime) {
 			latestDatetime = msgExt.Datetime
 		}
-
+		msgExt.IsMemory = true
 		formattedContent := fmt.Sprintf("(%s) %s", msgExt.Datetime.Format(time.RFC3339), msgExt.Content)
 
-		msg := Messages{msgExt.Id, "assistant", formattedContent, "Memory"}
+		msg := Messages{msgExt.Id, "assistant", formattedContent, "Memory", true, msgExt.FirstId, msgExt.LastId}
 		messages = append(messages, msg)
 	}
 
@@ -824,6 +833,9 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal Server Error 2", http.StatusInternalServerError)
 			return
 		}
+		msg.IsMemory = false
+		msg.FirstId = -1
+		msg.LastId = -1
 		messages = append(messages, msg)
 	}
 
@@ -831,6 +843,58 @@ func retrieveDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 		messages = append(messages, Messages{Id: 0, Persona: "nobody", Role: "user", Content: "nothing to show"})
 	}
 
+	jsonRes, err := json.Marshal(messages)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonRes)
+}
+
+func getMemoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
+	uid, err := getUserId(w, r)
+	if err != nil {
+		fmt.Printf("Failed to get user id: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get user id: %v", err), http.StatusInternalServerError)
+	}
+	db, _ := getDb()
+	defer db.Close()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var detailRequest DetailRequest
+
+	err = json.Unmarshal(body, &detailRequest)
+	if err != nil {
+		http.Error(w, "Failed to read unmarshal body", http.StatusInternalServerError)
+		return
+	}
+
+	detailsRows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id=? AND id <= ? AND id >= ? ORDER BY datetime", uid, detailRequest.FirstId, detailRequest.LastId)
+	if err != nil {
+		fmt.Printf("Failed to get latest 10 memories from memories: %v", err)
+	}
+	//defer summaryRows.Close()
+
+	var messages = []Messages{}
+
+	for detailsRows.Next() {
+		var msg Messages
+		err = detailsRows.Scan(&msg.Id, &msg.Persona, &msg.Role, &msg.Content)
+		if err != nil {
+			http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
+			return
+		}
+		messages = append(messages, msg)
+	}
 	jsonRes, err := json.Marshal(messages)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -1182,6 +1246,7 @@ func main() {
 	http.HandleFunc("/async/getChatLog", getChatLogHandler)
 	http.HandleFunc("/async/generateMemories", generateMemoriesHandler)
 	http.HandleFunc("/async/retrieveDiscussion", retrieveDiscussionHandler)
+	http.HandleFunc("/async/getMemoryDetails", getMemoryDetailsHandler)
 
 	http.HandleFunc("/async/search", searchHandler)
 	http.HandleFunc("/async/fetch", fetchHandler)
