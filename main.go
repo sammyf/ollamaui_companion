@@ -878,7 +878,12 @@ func getMemoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detailsRows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id=? AND id <= ? AND id >= ? ORDER BY datetime", uid, detailRequest.FirstId, detailRequest.LastId)
+	fmt.Println("REQUEST IDS")
+	fmt.Println(uid)
+	fmt.Println(detailRequest.FirstId)
+	fmt.Println(detailRequest.LastId)
+
+	detailsRows, err := db.Query("SELECT id, persona, role, content FROM chat_log WHERE user_id=? AND id >= ? AND id <= ? ORDER BY datetime", uid, detailRequest.FirstId, detailRequest.LastId)
 	if err != nil {
 		fmt.Printf("Failed to get latest 10 memories from memories: %v", err)
 	}
