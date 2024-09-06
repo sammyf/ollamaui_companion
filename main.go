@@ -18,7 +18,7 @@ import (
 )
 
 // amount of chat logs to collect before returning to the summarizer
-const SUMMARY_THRESHOLD = 10
+const SUMMARY_THRESHOLD = 20
 
 // amount of search hits to retain
 const MAX_SEARCH_HITS = 10
