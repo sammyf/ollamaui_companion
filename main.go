@@ -1040,7 +1040,8 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a new request
-	searchURL := fmt.Sprintf("http://searx.local:8888/search?q=%s&format=json", url.QueryEscape(query.Query))
+	//searchURL := fmt.Sprintf("http://searx.local:8888/search?q=%s&format=json", url.QueryEscape(query.Query))
+	searchURL := fmt.Sprintf(os.Getenv("SEARX")+"/search?q=%s&format=json", url.QueryEscape(query.Query))
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)

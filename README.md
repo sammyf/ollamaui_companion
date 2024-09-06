@@ -1,5 +1,18 @@
-A simple request queue acting as intermediate between ollama and ollamaui. It needs a mariadb or mysql server running somewhere to track the requests.
+### OLLAMAUI COMPANION APP
 
-Run install.sh to install the dependencies, then go build to build the tool. 
+A simple app acting as backend for Ollamaui. It provides the following features :
+* request queue acting as intermediate between ollama and ollamaui. 
+* storage of chat logs
+* summarization of the chat logs (in essence : 'memories')
+* optionally, access to a SearxNg instance.
 
-Probably useless for everybody but me, but  there you go ... 
+#### Requirements
+* a maria or mysql server, along a user with CREATE and GRANT privileges *(root for example)*
+* a small LLM to be used to summarize chat logs fast without clogging your precious memory *(recommendation : **qwen2:0.5b**)*
+* *(optional but highly recommended)* a SearxNg instance **capable of returning json**
+
+#### Installation
+Run install.sh to install the dependencies and setup the database. 
+
+#### Useage
+run ./restart.sh to update, build and start the server.
