@@ -4,7 +4,7 @@ echo
 echo It implements a basic queuing mechanism for requests,
 echo a memory management system and a
 echo search engine query system for your LLMs
-echo.
+echo
 echo installing GO dependencies
 go get -u github.com/google/uuid
 go get -u github.com/go-sql-driver/mysql
@@ -39,7 +39,7 @@ read -s -p "Enter password (press return if no password is needed!): " root_pass
 if [ "$root_password" = "" ]; then
   mysql -u $root_user < ollamaui-scheme.sql
   mysql -u $root_user < ollamaui-user.sql
-else;
+else
   mysql -u $root_user -p$root_password < ollamaui-scheme.sql
   mysql -u $root_user -p$root_password < ollamaui-user.sql
 fi
