@@ -7,7 +7,7 @@ A simple app acting as backend for Ollamaui. It provides the following features 
 * optionally, access to a SearxNg instance.
 
 #### Requirements
-* a maria or mysql server, along a user with CREATE and GRANT privileges *(root for example)*
+* a maria or mysql server, and a database user with CREATE and GRANT privileges *(root for example)*
 * a small LLM to be used to summarize chat logs fast without clogging your precious memory *(recommendation : **qwen2:0.5b**)*
 * *(optional but highly recommended)* a SearxNg instance **capable of returning json**
 
