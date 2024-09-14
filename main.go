@@ -324,9 +324,14 @@ func unloadHandler(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{
 		Timeout: 1,
 	}
-
+	var prompt LLMRequest
+	err = json.Unmarshal(requestBody, &prompt)
+	if err != nil {
+		http.Error(w, "Failed to unmarshal request body", http.StatusInternalServerError)
+		return
+	}
 	// Create a new request
-	req, err := http.NewRequest("GET", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
 	if err != nil {
 		fmt.Printf("Failed to create new request: %v", err)
 		return
