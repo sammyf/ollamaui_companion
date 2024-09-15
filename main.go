@@ -668,7 +668,7 @@ func generateSummary(uid int) {
 
 		llmRequest := LLMRequest{
 			Model:  summarizer,
-			Prompt: chatSection + "\nWrite a summary of the discussion written above.",
+			Prompt: chatSection + "\nWrite a short summary of the discussion written above.",
 		}
 		llmRequest.Options.Temperature = 1.0
 
