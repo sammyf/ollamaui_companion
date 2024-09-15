@@ -39,12 +39,12 @@ type LLMAnswer struct {
 	CreatedAt          string   `json:"created_at"`
 	Message            Messages `json:"message"`
 	Done               bool     `json:"done"`
-	TotalDuration      int      `json:"total_duration"`
-	LoadDuration       int      `json:"load_duration"`
-	PromptEvalCount    int      `json:"prompt_eval_count"`
-	PromptEvalDuration int      `json:"prompt_eval_duration"`
-	EvalCount          int      `json:"eval_count"`
-	EvalDuration       int      `json:"eval_duration"`
+	TotalDuration      int64    `json:"total_duration"`
+	LoadDuration       int64    `json:"load_duration"`
+	PromptEvalCount    int64    `json:"prompt_eval_count"`
+	PromptEvalDuration int64    `json:"prompt_eval_duration"`
+	EvalCount          int64    `json:"eval_count"`
+	EvalDuration       int64    `json:"eval_duration"`
 }
 
 // LLMGenerateAnswer
@@ -56,9 +56,9 @@ type LLMGenerateAnswer struct {
 	Context            []int     `json:"context"`
 	TotalDuration      int64     `json:"total_duration"`
 	LoadDuration       int64     `json:"load_duration"`
-	PromptEvalCount    int       `json:"prompt_eval_count"`
-	PromptEvalDuration int       `json:"prompt_eval_duration"`
-	EvalCount          int       `json:"eval_count"`
+	PromptEvalCount    int64     `json:"prompt_eval_count"`
+	PromptEvalDuration int64     `json:"prompt_eval_duration"`
+	EvalCount          int64     `json:"eval_count"`
 	EvalDuration       int64     `json:"eval_duration"`
 }
 
