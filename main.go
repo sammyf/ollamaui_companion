@@ -708,6 +708,9 @@ func generateEmbeddings(uid int, memoryId int64, summary string) {
 		fmt.Printf("----- Failed to marshal embeddings: %v", err)
 		return
 	}
+
+	fmt.Println("Body : ", string(body))
+
 	// Create a new request
 	req, err := http.NewRequest("POST", os.Getenv("COMPANION_URL")+"/companion/embed_memory", bytes.NewBuffer(body))
 	if err != nil {
