@@ -692,6 +692,7 @@ func generateSummary(uid int) {
 }
 
 func generateEmbeddings(uid int, memoryId int64, summary string) {
+	fmt.Println(">>>>> Generating Embeddings for Memory : ", memoryId)
 	// Create custom HTTP client with a 10-minute timeout
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
@@ -704,13 +705,13 @@ func generateEmbeddings(uid int, memoryId int64, summary string) {
 
 	body, err := json.Marshal(embeddingReq)
 	if err != nil {
-		fmt.Printf("Failed to generate embeddings: %v", err)
+		fmt.Printf("----- Failed to marshal embeddings: %v", err)
 		return
 	}
 	// Create a new request
 	req, err := http.NewRequest("POST", os.Getenv("COMPANION_URL")+"/companion/embed_memory", bytes.NewBuffer(body))
 	if err != nil {
-		fmt.Printf("Failed to create new request: %v", err)
+		fmt.Printf("----- Failed to execute embedding request: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -718,21 +719,22 @@ func generateEmbeddings(uid int, memoryId int64, summary string) {
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Failed to make request to external service: %v", err)
+		fmt.Printf("----- Failed to make request to external service: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	db, err := getDb()
 	if err != nil {
-		fmt.Printf("Failed to open database: %v", err)
+		fmt.Printf("----- Failed to open database: %v", err)
 	}
 	_, err = db.Exec("UPDATE memories SET has_embeddings=1 WHERE id = ?", uid)
 	if err != nil {
-		fmt.Printf("Failed to execute query: %v", err)
+		fmt.Printf("----- äFailed to execute query: %v", err)
 		return
 	}
 	defer db.Close()
+	fmt.Println("<<<< Embeddings Generated for Memory : ", memoryId)
 }
 
 func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
