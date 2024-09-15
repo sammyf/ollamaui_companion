@@ -724,33 +724,42 @@ func generateSummary(uid int) {
 	return
 }
 
+func returnEmptyMemory(w http.ResponseWriter) {
+	answer := embeddedMemoryAnswer{Memory: ""}
+	jsnAnswer, _ := json.Marshal(answer)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsnAnswer)
+}
+
 func retrieveMemoryByEmbeddingHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(">>>>> Retrieving Memory By Embeddings ... ")
 	uid, err := getUserId(w, r)
 	if err != nil {
-		http.Error(w, "Failed to get user id", http.StatusInternalServerError)
+		fmt.Println("Failed to get user id")
+		returnEmptyMemory(w)
 	}
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-		return
+		fmt.Println("Only POST method is allowed")
+		returnEmptyMemory(w)
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
+		fmt.Println("Failed to read request body")
+		returnEmptyMemory(w)
 	}
 	defer r.Body.Close()
 
 	var prompt Prompt
 	err = json.Unmarshal(body, &prompt)
 	if err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
+		fmt.Println("Invalid JSON payload")
+		returnEmptyMemory(w)
 	}
 
 	if countWords(prompt.Prompt) < MIN_CHAT_SECTION {
-		http.Error(w, "Minimum chat section length is 10 words", http.StatusBadRequest)
-		return
+		fmt.Println("Minimum chat section length is 10 words")
+		returnEmptyMemory(w)
 	}
 
 	// Create custom HTTP client with a 10-minute timeout
@@ -765,36 +774,36 @@ func retrieveMemoryByEmbeddingHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err = json.Marshal(bodyReq)
 	if err != nil {
-		fmt.Printf("----- Failed to marshal embeddings: %v", err)
-		return
+		fmt.Println("----- Failed to marshal embeddings")
+		returnEmptyMemory(w)
 	}
 
 	// Create a new request
 	req, err := http.NewRequest("POST", os.Getenv("COMPANION_URL")+"/companion/retrieve_memory", bytes.NewBuffer(body))
 	if err != nil {
-		http.Error(w, "----- Failed to execute retrieving request", http.StatusInternalServerError)
-		return
+		fmt.Println("----- Failed to execute retrieving request")
+		returnEmptyMemory(w)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	// Perform the request
 	resp, err := client.Do(req)
 	if err != nil {
-		http.Error(w, "----- Failed to make request to external service", http.StatusInternalServerError)
-		return
+		fmt.Println("----- Failed to make request to external service")
+		returnEmptyMemory(w)
 	}
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
-		return
+		fmt.Println("Failed to read response body")
+		returnEmptyMemory(w)
 	}
 	defer resp.Body.Close()
 
 	var memory memoryResponseStruct
 	err = json.Unmarshal(responseBody, &memory)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal response", http.StatusInternalServerError)
+		fmt.Println("Failed to unmarshal response")
 	}
 	retrieveMemoryById(w, r, memory.ID)
 }
@@ -803,14 +812,14 @@ func retrieveMemoryById(w http.ResponseWriter, r *http.Request, memoryId int) {
 	db, err := getDb()
 	defer db.Close()
 	if err != nil {
-		http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
-		return
+		fmt.Println("Internal Server Error 1")
+		returnEmptyMemory(w)
 	}
 
 	var content string
 	err = db.QueryRow("SELECT content FROM memories WHERE id = ? LIMIT 1", memoryId).Scan(&content)
 	if err != nil {
-		content = "nothing found."
+		content = ""
 	}
 
 	answer := embeddedMemoryAnswer{Memory: content}
