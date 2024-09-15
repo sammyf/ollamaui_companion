@@ -750,6 +750,7 @@ func retrieveMemoryByEmbeddingHandler(w http.ResponseWriter, r *http.Request) {
 
 	if countWords(prompt.Prompt) < MIN_CHAT_SECTION {
 		http.Error(w, "Minimum chat section length is 10 words", http.StatusBadRequest)
+		return
 	}
 
 	// Create custom HTTP client with a 10-minute timeout
