@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // amount of chat logs to collect before returning to the summarizer
@@ -101,6 +102,23 @@ type memoryRequestStruct struct {
 	User_id           int `json:"user_id"`
 	First_chat_log_id int `json:"first_chat_log_id"`
 	Last_chat_log_id  int `json:"last_chat_log_id"`
+}
+
+type embeddedMemoryStruct struct {
+	UID    int    `json:"uid"`
+	Prompt string `json:"prompt"`
+}
+
+type memoryResponseStruct struct {
+	ID int `json:"id"`
+}
+
+type Prompt struct {
+	Prompt string `json:"prompt"`
+}
+
+type embeddedMemoryAnswer struct {
+	Memory string `json:"memory"`
 }
 
 type EmbeddingRequestStruct struct {
@@ -233,13 +251,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var payload Payload
-	err = json.Unmarshal(body, &payload)
-	if err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
-	}
-
 	uniqueID := uuid.New().String()
 
 	fmt.Println("uniqueId: " + uniqueID)
@@ -260,6 +271,23 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+}
+
+func countWords(s string) int {
+	count := 0
+	inWord := false
+
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			if !inWord {
+				count++
+				inWord = true
+			}
+		} else {
+			inWord = false
+		}
+	}
+	return count
 }
 
 func responseHandler(w http.ResponseWriter, r *http.Request) {
@@ -459,7 +487,6 @@ func psHandler(w http.ResponseWriter, r *http.Request) {
 
 // Perform asynchronous request and store result in the database
 func asyncChatRequest(uuid string, requestBody []byte) {
-
 	// Create custom HTTP client with a 10-minute timeout
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
@@ -697,6 +724,102 @@ func generateSummary(uid int) {
 	return
 }
 
+func retrieveMemoryByEmbeddingHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(">>>>> Retrieving Memory By Embeddings ... ")
+	uid, err := getUserId(w, r)
+	if err != nil {
+		http.Error(w, "Failed to get user id", http.StatusInternalServerError)
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var prompt Prompt
+	err = json.Unmarshal(body, &prompt)
+	if err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	if countWords(prompt.Prompt) < MIN_CHAT_SECTION {
+		http.Error(w, "Minimum chat section length is 10 words", http.StatusBadRequest)
+	}
+
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	bodyReq := embeddedMemoryStruct{
+		UID:    uid,
+		Prompt: prompt.Prompt,
+	}
+
+	body, err = json.Marshal(bodyReq)
+	if err != nil {
+		fmt.Printf("----- Failed to marshal embeddings: %v", err)
+		return
+	}
+
+	// Create a new request
+	req, err := http.NewRequest("POST", os.Getenv("COMPANION_URL")+"/companion/retrieve_memory", bytes.NewBuffer(body))
+	if err != nil {
+		http.Error(w, "----- Failed to execute retrieving request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "----- Failed to make request to external service", http.StatusInternalServerError)
+		return
+	}
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	var memory memoryResponseStruct
+	err = json.Unmarshal(responseBody, &memory)
+	if err != nil {
+		http.Error(w, "Failed to unmarshal response", http.StatusInternalServerError)
+	}
+	retrieveMemoryById(w, r, memory.ID)
+}
+
+func retrieveMemoryById(w http.ResponseWriter, r *http.Request, memoryId int) {
+	db, err := getDb()
+	defer db.Close()
+	if err != nil {
+		http.Error(w, "Internal Server Error 1", http.StatusInternalServerError)
+		return
+	}
+
+	var content string
+	err = db.QueryRow("SELECT content FROM memories WHERE id = ? LIMIT 1", memoryId).Scan(&content)
+	if err != nil {
+		content = "nothing found."
+	}
+
+	answer := embeddedMemoryAnswer{Memory: content}
+	jsnAnswer, err := json.Marshal(answer)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsnAnswer)
+}
+
 func generateEmbeddings(uid int, memoryId int64, summary string) {
 	fmt.Println(">>>>> Generating Embeddings for Memory : ", memoryId)
 	// Create custom HTTP client with a 10-minute timeout
@@ -714,8 +837,6 @@ func generateEmbeddings(uid int, memoryId int64, summary string) {
 		fmt.Printf("----- Failed to marshal embeddings: %v", err)
 		return
 	}
-
-	fmt.Println("Body : ", string(body))
 
 	// Create a new request
 	req, err := http.NewRequest("POST", os.Getenv("COMPANION_URL")+"/companion/embed_memory", bytes.NewBuffer(body))
@@ -1327,6 +1448,7 @@ func main() {
 	http.HandleFunc("/async/generateMemories", generateMemoriesHandler)
 	http.HandleFunc("/async/retrieveDiscussion", retrieveDiscussionHandler)
 	http.HandleFunc("/async/getMemoryDetails", getMemoryDetailsHandler)
+	http.HandleFunc("/async/retrieveRelatedMemory", retrieveMemoryByEmbeddingHandler)
 
 	http.HandleFunc("/async/search", searchHandler)
 	http.HandleFunc("/async/fetch", fetchHandler)
