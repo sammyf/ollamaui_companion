@@ -101,6 +101,12 @@ type memoryRequestStruct struct {
 	Last_chat_log_id  int `json:"last_chat_log_id"`
 }
 
+type EmbeddingRequestStruct struct {
+	Summary string `json:"summary"`
+	UID     int    `json:"uid"`
+	MemID   int64  `json:"memid"`
+}
+
 type PsModelDetail struct {
 	ParentModel       string   `json:"parent_model"`
 	Format            string   `json:"format"`
@@ -330,6 +336,8 @@ func unloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to unmarshal request body", http.StatusInternalServerError)
 		return
 	}
+	fmt.Printf("Prompt: %v\n", prompt)
+	fmt.Printf("Prompt: %v\n", requestBody)
 	// Create a new request
 	req, err := http.NewRequest("POST", "http://ollama.local:11111/api/chat", bytes.NewBuffer(requestBody))
 	if err != nil {
@@ -683,6 +691,50 @@ func generateSummary(uid int) {
 	return
 }
 
+func generateEmbeddings(uid int, memoryId int64, summary string) {
+	// Create custom HTTP client with a 10-minute timeout
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+	embeddingReq := EmbeddingRequestStruct{
+		Summary: summary,
+		UID:     uid,
+		MemID:   memoryId,
+	}
+
+	body, err := json.Marshal(embeddingReq)
+	if err != nil {
+		fmt.Printf("Failed to generate embeddings: %v", err)
+		return
+	}
+	// Create a new request
+	req, err := http.NewRequest("POST", os.Getenv("COMPANION_URL")+"/companion/embed_memory", bytes.NewBuffer(body))
+	if err != nil {
+		fmt.Printf("Failed to create new request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform the request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to make request to external service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	db, err := getDb()
+	if err != nil {
+		fmt.Printf("Failed to open database: %v", err)
+	}
+	_, err = db.Exec("UPDATE memories SET has_embeddings=1 WHERE id = ?", uid)
+	if err != nil {
+		fmt.Printf("Failed to execute query: %v", err)
+		return
+	}
+	defer db.Close()
+}
+
 func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
@@ -691,6 +743,7 @@ func generateMemoriesHandler(w http.ResponseWriter, r *http.Request) {
 	uid, _ := getUserId(w, r)
 
 	generateSummary(uid)
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -727,10 +780,11 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 	}
 
 	fmt.Println("\n\nSUMMARY\n" + summary + "\nKEYWORDS:\n" + keywords + "\n\n")
+
 	if os.Getenv("DEBUG") != "1" {
 		db, _ := getDb()
 		fmt.Println("Commiting memory to DB.")
-		_, err = db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
+		result, err := db.Exec("INSERT INTO memories (user_id, first_chat_log_id, last_chat_log_id, content, keywords)  VALUES (?, ?, ?, ?, ?)", requestDetails.User_id, requestDetails.First_chat_log_id, requestDetails.Last_chat_log_id, summary, keywords)
 		if err != nil {
 			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
@@ -741,7 +795,11 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 			fmt.Printf("Failed to insert data into SQLite database: %v", err)
 		}
 		_ = db.Close()
+
+		memId, _ := result.LastInsertId()
+		generateEmbeddings(requestDetails.User_id, memId, summary)
 	}
+
 	fmt.Println("Done with query", requestDetails.Request_id)
 }
 
