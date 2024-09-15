@@ -4,5 +4,6 @@ export DB_USER=
 export DB_PASSWORD=
 export DB_HOST=
 export DB_NAME=
+export COMPANION_URL=
 export SUMMARIZER=
 ./m
