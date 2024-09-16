@@ -756,8 +756,8 @@ func retrieveMemoryByEmbeddingHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Invalid JSON payload")
 		returnEmptyMemory(w)
 	}
-
-	if countWords(prompt.Prompt) < MIN_CHAT_SECTION {
+	fmt.Println("Prompt : ", prompt.Prompt)
+	if countWords(prompt.Prompt) < 10 {
 		fmt.Println("Minimum chat section length is 10 words")
 		returnEmptyMemory(w)
 	}
@@ -799,11 +799,11 @@ func retrieveMemoryByEmbeddingHandler(w http.ResponseWriter, r *http.Request) {
 		returnEmptyMemory(w)
 	}
 	defer resp.Body.Close()
-
+	fmt.Println("Response Body : ", string(responseBody))
 	var memory memoryResponseStruct
 	err = json.Unmarshal(responseBody, &memory)
 	if err != nil {
-		fmt.Println("Failed to unmarshal response")
+		fmt.Println("Failed to unmarshal response 1")
 	}
 	retrieveMemoryById(w, r, memory.ID)
 }
@@ -870,7 +870,7 @@ func generateEmbeddings(uid int, memoryId int64, summary string) {
 	}
 	_, err = db.Exec("UPDATE memories SET has_embeddings=1 WHERE id = ?", uid)
 	if err != nil {
-		fmt.Printf("----- äFailed to execute query: %v", err)
+		fmt.Printf("----- Failed to execute query: %v", err)
 		return
 	}
 	defer db.Close()
@@ -939,7 +939,7 @@ func asyncSummaryRequest(requestDetails memoryRequestStruct, requestBody []byte)
 		_ = db.Close()
 
 		memId, _ := result.LastInsertId()
-		generateEmbeddings(requestDetails.User_id, memId, summary)
+		generateEmbeddings(requestDetails.User_id, memId, keywords)
 	}
 
 	fmt.Println("Done with query", requestDetails.Request_id)
