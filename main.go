@@ -26,7 +26,7 @@ const MAX_SEARCH_HITS = 10
 
 const MIN_CHAT_SECTION = 50
 
-const MIN_PROMPT_WORDS = 5
+const MIN_PROMPT_WORDS = 8
 
 type LLMRequest struct {
 	Model   string `json:"model"`
