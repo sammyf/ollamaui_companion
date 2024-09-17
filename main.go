@@ -267,7 +267,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	if lastMessage.Role == "user" && countWords(lastMessage.Content) > MIN_PROMPT_WORDS {
 		memory := retrieveMemoryByEmbedding(uid, lastMessage.Content)
 		if memory != "" {
-			payload.Messages[len(payload.Messages)-1].Content = "[***System Message*** this memory flashes through your mind : " + memory + ".\n Ignore it if it is not relevant to the discussion at hand.]\n" + lastMessage.Content
+			payload.Messages[len(payload.Messages)-1].Content = "[***System Message*** the following memory flashes through your mind as it might be relevant to the discussion. Ignore it if it isn't relevant ***START***\n" + memory + "\n***END***]\n" + lastMessage.Content
 		}
 	}
 	uniqueID := uuid.New().String()
