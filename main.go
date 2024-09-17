@@ -24,7 +24,9 @@ const SUMMARY_THRESHOLD = 20
 // amount of search hits to retain
 const MAX_SEARCH_HITS = 10
 
-const MIN_CHAT_SECTION = 100
+const MIN_CHAT_SECTION = 50
+
+const MIN_PROMPT_WORDS = 5
 
 type LLMRequest struct {
 	Model   string `json:"model"`
@@ -262,7 +264,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(body, &payload)
 
 	lastMessage := payload.Messages[len(payload.Messages)-1]
-	if lastMessage.Role == "user" && countWords(lastMessage.Content) > MIN_CHAT_SECTION {
+	if lastMessage.Role == "user" && countWords(lastMessage.Content) > MIN_PROMPT_WORDS {
 		memory := retrieveMemoryByEmbedding(uid, lastMessage.Content)
 		if memory != "" {
 			payload.Messages[len(payload.Messages)-1].Content = "[***System Message*** this memory flashes through your mind : " + memory + "]\n" + lastMessage.Content
